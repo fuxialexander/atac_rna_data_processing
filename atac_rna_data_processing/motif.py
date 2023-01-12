@@ -1,6 +1,6 @@
 import seqlogo
 import pandas as pd
-
+import numpy as np
 
 class Motif(object):
     """Base class for TFBS motifs."""
@@ -37,6 +37,9 @@ class MotifCluster(object):
     def __repr__(self) -> str:
         return "MotifCluster(id={}, name={}, seed_motif={})".format(self.id, self.name, self.seed_motif)
 
+    def get_gene_name_list(self):
+        """Get list of gene names."""
+        return np.concatenate([motif.gene_name for motif in self.motifs.values()])
 
 class MotifClusterCollection(object):
     """List of TFBS motif clusters."""

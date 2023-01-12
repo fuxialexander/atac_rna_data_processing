@@ -13,5 +13,5 @@ motif.get_motif('LHX6_homeodomain_3').plot_logo()
 motif.get_motifcluster_list()
 # %%
 motif.get_motif_cluster_by_name(
-    'PAX/1').motifs.get_motif('PAX9_PAX_1').plot_logo()
+    'PAX/1').motifs.get_motif('PAX6_MOUSE.H11MO.0.C').gene_name
 # %%
