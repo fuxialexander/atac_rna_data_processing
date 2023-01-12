@@ -5,20 +5,20 @@ The following workflows are included:
 
 ```{text}
 ├── human
-│   ├── 10x
-│   ├── 4DN
-│   ├── aGBM
-│   ├── bingren_data
-│   ├── fetal_human
-│   ├── k562
-│   ├── pGBM
-│   └── TCGA
+│   ├── 10x (hg38)
+│   ├── 4DN (hg38)
+│   ├── aGBM (?)
+│   ├── bingren_data (hg38)
+│   ├── fetal_human (hg19)
+│   ├── k562 (hg38)
+│   ├── pGBM (?)
+│   └── TCGA (hg19)
 ├── mouse
 ```
 
 ## Installation
 
-We use Mamba to manage the environment. To install Mamba, follow instructions on https://github.com/conda-forge/miniforge#mambaforge. Choose `Mambaforge-pypy3` when installing.
+All analysis should be performed on Linux. We use Mamba to manage the environment. To install Mamba, follow instructions on https://github.com/conda-forge/miniforge#mambaforge. Choose `Mambaforge-pypy3` when installing.
 
 After Mamba was installed, you can clone the directory and install the environment by
 
