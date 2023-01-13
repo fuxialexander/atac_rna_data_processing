@@ -214,6 +214,7 @@ dependencies:
   - pyrle=0.0.35=py310h1425a21_1
   - pyrsistent=0.19.3=py310h1fa729e_0
   - pysocks=1.7.1=pyha2e5f31_6
+  - pytabix=0.1=py310hc8f18ef_2
   - python=3.10.8=h4a9ceb5_0_cpython
   - python-dateutil=2.8.2=pyhd8ed1ab_0
   - python-fastjsonschema=2.16.2=pyhd8ed1ab_0
