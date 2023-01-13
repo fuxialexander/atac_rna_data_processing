@@ -1,8 +1,9 @@
 __pycache__
 *.feather
 *.gtf.gz
-test/*.chr1
+test/*.chr*
 test/*motif*
 test/*csv
 test/*npz
 test/*yml
+test/*npy
