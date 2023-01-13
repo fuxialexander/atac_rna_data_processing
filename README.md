@@ -23,7 +23,7 @@ All analysis should be performed on Linux. We use Mamba to manage the environmen
 After Mamba was installed, you can clone the directory and install the environment by
 
 ```{bash}
-git clone 
+git clone git@github.com:fuxialexander/atac_rna_data_processing.git
 cd atac_rna_data_processing
 mamba env create -f environment.yml
 ```
@@ -85,6 +85,20 @@ This should keep the 4th column of the BED file intact.
 
 ## 2. Get motif binding instances in the ATAC-seq peaks
 
-This can be achieved by running the following command:
+This can be achieved by running the following BASH command:
 
 ```{bash}
+# go to the root directory of the repository
+export PATH=$(pwd)/scripts:$PATH
+# go to data directory
+cd test
+get_motif.sh test hg38
+# wait until the job is done
+# then you can remove the intermediate files
+rm -rf test.atac*chr*
+```
+
+The results are in file `test.atac.motif.bed`, which we will use in the python processing pipeline.
+
+## 3. Compute a peak-by-motif binding score matrix
+
