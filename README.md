@@ -102,3 +102,18 @@ The results are in file `test.atac.motif.bed`, which we will use in the python p
 
 ## 3. Compute a peak-by-motif binding score matrix
 
+```{bash}
+cd test
+python test_atac.py
+```
+
+## 4. Produce a promoter expression table
+
+## 5. Compute a peak expression score matrix
+
+All the above steps can be done by running the following python script:
+
+```{bash}
+cd test
+python test_rna.py
+```
