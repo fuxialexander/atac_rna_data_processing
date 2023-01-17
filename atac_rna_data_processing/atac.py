@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pyranges import read_bed
 from pyranges import PyRanges as pr
-from scipy.sparse import csr_matrix, save_npz, load_npz
+from scipy.sparse import csr_matrix, save_npz
 import yaml
 
 class ATAC(object):
@@ -118,4 +118,12 @@ class ATAC(object):
         tmp_motif_data['Accessibility'] = 1
         save_npz(self.sample + ".natac.npz",
                  csr_matrix(tmp_motif_data.iloc[:, 3:3+len(self.motif_dict)+1].values))
+
+
+class ATACWithAccessibilityCutOff(ATAC):
+    pass
+
+class ATACWithSequence(ATAC):
+    
+    pass
 

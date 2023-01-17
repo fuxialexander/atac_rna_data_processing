@@ -26,6 +26,7 @@ After Mamba was installed, you can clone the directory and install the environme
 git clone git@github.com:fuxialexander/atac_rna_data_processing.git
 cd atac_rna_data_processing
 mamba env create -f environment.yml
+pip install --user MOODS-python
 ```
 
 ## Usage

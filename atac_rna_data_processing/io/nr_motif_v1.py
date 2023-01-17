@@ -1,6 +1,7 @@
 import pandas as pd
+import MOODS
 import os 
-from ..motif import Motif, MotifCluster, MotifClusterCollection, MotifCollection
+from ..motif import *
 
 class NrMotifV1(MotifClusterCollection):
     """TFBS motif clusters defined in https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/."""
@@ -13,7 +14,22 @@ class NrMotifV1(MotifClusterCollection):
             print("Downloading PFMs...")
             os.system("cd {motif_dir} && wget --recursive --no-parent {url}pfm/".format(motif_dir=motif_dir, url=os.path.join(base_url, "pfm"))) 
         self.motif_dir = motif_dir
+
         self.annotations = self.get_motif_annotations(motif_dir, base_url)
+        matrices = []
+        matrices_rc = []
+        for motif in self.get_motif_list():
+            filename = os.path.join(self.motif_dir, "pfm", motif + ".pfm")
+            valid=False
+            if os.path.exists(filename): # let's see if it's pfm
+                valid, matrix = pfm_to_log_odds(filename)
+                matrices.append(matrix)
+                matrices_rc.append(MOODS.tools.reverse_complement(matrix,4))
+
+        self.matrices = matrices
+        self.matrices_all = self.matrices + matrices_rc
+        self.matrix_names = self.gets_motif_list()
+
 
     def get_motif_annotations(self, motif_dir, base_url):
         """Get motif clusters from the non-redundant motif v1.0 release."""
@@ -29,7 +45,7 @@ class NrMotifV1(MotifClusterCollection):
 
     def get_motif_list(self):
         """Get list of motifs."""
-        return self.annotations.Motif.unique()
+        return sorted(self.annotations.Motif.unique())
 
     def get_motif(self, motif_id):
         row = self.annotations[self.annotations.Motif == motif_id].iloc[0]
@@ -44,7 +60,7 @@ class NrMotifV1(MotifClusterCollection):
 
     def get_motifcluster_list(self):
         """Get list of motif clusters."""
-        return self.annotations.Name.unique()
+        return sorted(self.annotations.Name.unique())
     
     def get_motif_cluster_by_name(self, mc_name):
         """Get motif cluster by name."""
@@ -70,3 +86,11 @@ class NrMotifV1(MotifClusterCollection):
         for motif_id in self.annotations[self.annotations.Cluster_ID == mc_id].Motif.unique():
             mc.motifs[motif_id] = self.get_motif(motif_id)
         return mc
+
+    @property
+    def scanner(self, bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01]):
+        """Get MOODS scanner."""
+        return prepare_scanner(self.matrices_all, bg)
+
+
+
