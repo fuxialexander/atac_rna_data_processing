@@ -1,6 +1,64 @@
 import seqlogo
 import pandas as pd
 import numpy as np
+import MOODS
+
+
+def pfm_to_log_odds(filename, lo_bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01], ps=0.01):
+    mat = MOODS.parsers.pfm_to_log_odds(filename, lo_bg, ps)
+    if len(mat) != 4:
+        return False, mat
+    else:
+        return True, mat
+
+
+def print_results(header, seq, matrices, matrix_names, results):
+    # split results into forward and reverse strands
+    fr = results[:len(matrix_names)]
+    rr = results[len(matrix_names):]
+
+    # mix the forward and reverse strand results
+    mixed_results = [
+        [(r.pos, r.score, '+', ()) for r in fr[i]] +
+        [(r.pos, r.score, '-', ()) for r in rr[i]] for i in range(len(matrix_names))]
+
+    output = []
+    for (matrix, matrix_name, result) in zip(matrices, matrix_names, mixed_results):
+        # determine the length of the matrix
+        l = len(matrix[0]) if len(matrix) == 4 else len(matrix[0]) + 1
+
+        # sort the results by position
+        sorted_results = sorted(result, key=lambda r: r[0])
+
+        # create the output for each result
+        for r in sorted_results:
+            strand = r[2]
+            pos = r[0]
+            hitseq = seq[pos:pos+l]
+            output.append(([header, matrix_name, pos, strand, r[1], hitseq]))
+    return output
+
+
+def prepare_scanner(matrices_all, bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01]):
+    """
+    Prepare scanner for scanning motif.
+    """
+    bgs = {}
+    thresholds = {}
+    # for i in [chr]:
+    #     print(i)
+    #     if bg is not None:
+    #         bgs[i] = bg
+        # else:
+            # bgs[i] = MOODS.tools.bg_from_sequence_dna(genome.get_sequence(chr), 1, 100000)
+    # thresholds = {chr: [MOODS.tools.threshold_from_p_with_precision(
+        # m, bgs[chr], 0.0001, 200, 4) for m in matrices_all] for chr in bgs}
+    scanner = MOODS.scan.Scanner(7)
+    scanner.set_motifs(matrices_all, bg,[MOODS.tools.threshold_from_p_with_precision(
+        m, bg, 0.0001, 200, 4) for m in matrices_all])
+    return scanner
+
+
 
 class Motif(object):
     """Base class for TFBS motifs."""
@@ -40,6 +98,7 @@ class MotifCluster(object):
     def get_gene_name_list(self):
         """Get list of gene names."""
         return np.concatenate([motif.gene_name for motif in self.motifs.values()])
+
 
 class MotifClusterCollection(object):
     """List of TFBS motif clusters."""
