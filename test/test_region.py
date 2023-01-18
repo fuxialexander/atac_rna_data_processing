@@ -25,6 +25,5 @@ from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 
 motifs = NrMotifV1("/home/xf2217/Projects/motif_databases/motif-clustering/")
 #%%
-scanner = prepare_scanner()
-pr.scan_motif(motifs, )
+s = pr.scan_motif(motifs)
 # %%

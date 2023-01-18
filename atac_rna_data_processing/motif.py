@@ -1,11 +1,12 @@
 import seqlogo
 import pandas as pd
 import numpy as np
-import MOODS
+from MOODS.scan import Scanner
+from MOODS.parsers import pfm_to_log_odds
+from MOODS.tools import threshold_from_p_with_precision
 
-
-def pfm_to_log_odds(filename, lo_bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01], ps=0.01):
-    mat = MOODS.parsers.pfm_to_log_odds(filename, lo_bg, ps)
+def pfm_conversion(filename, lo_bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01], ps=0.01):
+    mat = pfm_to_log_odds(filename, lo_bg, ps)
     if len(mat) != 4:
         return False, mat
     else:
@@ -53,8 +54,8 @@ def prepare_scanner(matrices_all, bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01
             # bgs[i] = MOODS.tools.bg_from_sequence_dna(genome.get_sequence(chr), 1, 100000)
     # thresholds = {chr: [MOODS.tools.threshold_from_p_with_precision(
         # m, bgs[chr], 0.0001, 200, 4) for m in matrices_all] for chr in bgs}
-    scanner = MOODS.scan.Scanner(7)
-    scanner.set_motifs(matrices_all, bg,[MOODS.tools.threshold_from_p_with_precision(
+    scanner = Scanner(7)
+    scanner.set_motifs(matrices_all, bg,[threshold_from_p_with_precision(
         m, bg, 0.0001, 200, 4) for m in matrices_all])
     return scanner
 
