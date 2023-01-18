@@ -9,7 +9,8 @@ from Bio.Seq import Seq
 #%%
 # class for sequence manipulation
 class DNASequence(Seq):
-    def __init__(self, seq):
+    def __init__(self, seq, header = ''):
+        self.header = header
         self.seq = seq
         self.one_hot_encoding = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], 'N': [0, 0, 0, 0]}
     

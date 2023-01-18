@@ -1,5 +1,5 @@
 import pandas as pd
-import MOODS
+from MOODS.tools import reverse_complement
 import os 
 from ..motif import *
 
@@ -22,13 +22,15 @@ class NrMotifV1(MotifClusterCollection):
             filename = os.path.join(self.motif_dir, "pfm", motif + ".pfm")
             valid=False
             if os.path.exists(filename): # let's see if it's pfm
-                valid, matrix = pfm_to_log_odds(filename)
+                valid, matrix = pfm_conversion(filename)
                 matrices.append(matrix)
-                matrices_rc.append(MOODS.tools.reverse_complement(matrix,4))
+                matrices_rc.append(reverse_complement(matrix,4))
 
         self.matrices = matrices
         self.matrices_all = self.matrices + matrices_rc
-        self.matrix_names = self.gets_motif_list()
+        self.matrix_names = self.get_motif_list()
+        self.cluster_names = self.get_motifcluster_list()
+        self.motif_to_cluster = self.annotations[['Motif', 'Name']].set_index('Motif').to_dict()['Name']
 
 
     def get_motif_annotations(self, motif_dir, base_url):
