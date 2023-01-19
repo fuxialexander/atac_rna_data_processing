@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from pyfaidx import Fasta
+from tqdm import tqdm
 from pyliftover import LiftOver
 from pyranges import PyRanges
 from atac_rna_data_processing.sequence import DNASequence
@@ -100,12 +101,12 @@ class GenomicRegionCollection(PyRanges):
                  int64=False,
                  copy_df=True):
         super().__init__(df,
-                         chromosomes,
-                         starts,
-                         ends,
-                         strands,
-                         int64,
-                         copy_df)
+                        chromosomes,
+                        starts,
+                        ends,
+                        strands,
+                        int64,
+                        copy_df)
         self.genome = genome
 
     def __repr__(self) -> str:
@@ -118,6 +119,16 @@ class GenomicRegionCollection(PyRanges):
         self.df[['Chromosome', 'Start', 'End', 'Strand']].to_csv(
             file_name, sep='\t', header=False, index=False)
 
+    def center_expand(self, target_size):
+        """
+        Expand the genomic region collection from peak center
+        """
+        peak_center = (self.df['End'] + self.df['Start']) // 2
+        self.df['Start'] = peak_center - target_size//2
+        self.df['End'] = peak_center + target_size//2
+        idx = (self.df['Start'] > 0)
+        return GenomicRegionCollection(genome=self.genome[idx], df=self.df[idx])
+
     # generator of GenomicRegion objects
     def __iter__(self):
         for _, row in self.df.iterrows():
@@ -126,13 +137,26 @@ class GenomicRegionCollection(PyRanges):
             else:
                 yield GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], row['Strand'])
 
-    def collect_sequence(self, upstream=0, downstream=0):
+    def __getitem__(self, val):
+        if isinstance(val, int):
+            row = self.df.iloc[val]
+            if 'Strand' not in row:
+                return GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], '+')
+            else:
+                return GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], row['Strand'])
+        else:
+            return GenomicRegionCollection(self.genome.iloc[val], self.df.iloc[val])
+
+    def collect_sequence(self, mutations=None, upstream=0, downstream=0):
         """
         Collect the sequence of the genomic regions
         """
-        return [region.get_flanking_region(upstream, downstream).sequence for region in iter(self)]
+        if mutations is None:
+            return [region.get_flanking_region(upstream, downstream).sequence for region in iter(self)]
+        else:
+            pass
 
-    def scan_motif(self, motifs, non_negative=True):
+    def scan_motif(self, motifs, mutations = None, non_negative=True, upstream=0, downstream=0):
         """
         Scan motif in sequence using MOODS.
 
@@ -150,24 +174,40 @@ class GenomicRegionCollection(PyRanges):
         pd.DataFrame
             A dataframe containing the results of the scan. If `diff` is True, the dataframe will include columns for the difference in scores and the cluster of the motif.
         """
-        seqs = self.collect_sequence()
+        seqs = self.collect_sequence(mutations, upstream, downstream)
         # initialize the output list
         output = []
 
         # scan each sequence and add the results to the output list
         headers = []
+        lengths = []
+        sequences = []
         for s in seqs:
-            seq = s.seq
-            header = s.header
-            headers.append(header)
-            results = motifs.scanner.scan(seq)
-            output += print_results(header, seq, motifs.matrices,
-                                    motifs.matrix_names, results)
+            sequences.append(s.seq)
+            headers.append(s.header)
+            lengths.append(len(s.seq))
 
+        # concatenate the sequences with 100 Ns between each sequence
+        seq_cat = ('N'*100).join(sequences)
+        # get the list of sequence start and end positions in the concatenated sequence
+        starts = np.cumsum([0] + lengths[:-1]) + 100*np.arange(len(seqs))
+        ends = starts + np.array(lengths)
+        headers = np.array(headers)
+        # scan the concatenated sequence
+        results = motifs.scanner.scan(seq_cat)
+        output = print_results("", seq_cat, motifs.matrices,
+                                motifs.matrix_names, results)
         # convert the output list to a dataframe
         output = pd.DataFrame(
             output, columns=['header', 'motif', 'pos', 'strand', 'score', 'seq'])
         output['cluster'] = output.motif.map(motifs.motif_to_cluster)
+
+        # assign header names in output dataframe based on 'pos' and starts/ends
+        for i, h in enumerate(headers):
+            output.loc[(output.pos >= starts[i]) & (output.pos < ends[i]), 'header'] = h
+
+        # remove the rows with multiple Ns
+        output = output[~output.seq.str.contains('NN')]
 
         output = (
             output
