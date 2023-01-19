@@ -7,3 +7,7 @@ test/*csv
 test/*npz
 test/*yml
 test/*npy
+seq2motif/*.npy
+seq2motif/*.npz
+seq2motif/*.csv
+seq2motif/*.pth
