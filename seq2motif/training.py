@@ -73,7 +73,7 @@ def train(model, train_loader, optimizer, criterion, device):
     return train_loss
 
 # evaluate function
-def evaluate(model, test_loader, criterion, device):
+def evaluate(model, test_loader, criterion, device, return_output=False):
     model.eval()
     test_loss = 0
     with torch.no_grad():
@@ -82,6 +82,8 @@ def evaluate(model, test_loader, criterion, device):
             output = model(data)
             test_loss += criterion(output, target.to_dense()).item()
     test_loss /= len(test_loader.dataset)
+    if return_output:
+        return test_loss, output.cpu().numpy(), target.to_dense().cpu().numpy()
     return test_loss
 
 
@@ -145,7 +147,7 @@ num_heads = 4
 num_layers = 1
 dropout_rate = 0.5
 batch_size = 128
-num_epochs = 2
+num_epochs = 100
 learning_rate = 0.001
 # build dataloader
 train_dataset = MotifDataset(train_data, train_target)
@@ -234,8 +236,8 @@ criterion = nn.MSELoss()
 train_losses = []
 test_losses = []
 for epoch in range(num_epochs):
-    train_loss = train(model, train_loader, optimizer, criterion, device)
     test_loss = evaluate(model, test_loader, criterion, device)
+    train_loss = train(model, train_loader, optimizer, criterion, device)
     train_losses.append(train_loss)
     test_losses.append(test_loss)
     print('Epoch: {}, Train Loss: {:.4f}, Test Loss: {:.4f}'.format(epoch+1, train_loss, test_loss))
@@ -247,4 +249,14 @@ np.save('test_losses.npy', np.array(test_losses))
 
 
 
+# %%
+loss, target, output = evaluate(model, test_loader, criterion, device, return_output=True)
+# %%
+import seaborn as sns
+sns.scatterplot(x=target.reshape(-1), y=output.reshape(-1), s=1, alpha=0.5)
+# %%
+output
+# %%
+sns.lineplot(x=np.arange(len(train_losses)), y=train_losses)
+sns.lineplot(x=np.arange(len(test_losses)), y=test_losses)
 # %%
