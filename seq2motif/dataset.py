@@ -3,12 +3,14 @@
 # 1. Given a list of regions and a genome assembly, generate a list of sequences (one-hot encoded numpy array) as inputs
 # 2. Given a list of sequences, generate a list of motif scores as targets
 # %%
+import sys
+sys.path.append('..')
 import ipyparallel as ipp
 import pandas as pd
 from pyranges import PyRanges as pr
 from pyranges import read_bed
 from scipy.sparse import load_npz, save_npz, vstack
-
+from tqdm import tqdm
 from atac_rna_data_processing.atac import *
 from atac_rna_data_processing.gene import Gene
 from atac_rna_data_processing.io.gencode import Gencode
@@ -16,8 +18,7 @@ from atac_rna_data_processing.io.nr_motif_v1 import *
 from atac_rna_data_processing.motif import *
 from atac_rna_data_processing.region import *
 
-import sys
-sys.path.append('..')
+
 
 # %%
 motifs = NrMotifV1("/home/xf2217/Projects/motif_databases/motif-clustering/")
@@ -50,10 +51,9 @@ def generate_dataset(genome, df):
     """
     gr = GenomicRegionCollection(hg38, df)
     # 1. Generate sequences
-    input = ([s.padding(target_length=1000).one_hot for s in gr.center_expand(
-        900).collect_sequence()])
+    input = [s.one_hot for s in gr.center_expand(1000).collect_sequence()]
     # 2. Generate motif scores
-    target = parallel_scan_NrMotifV1(df)
+    target = pd.concat([parallel_scan_NrMotifV1(partition_df) for chrom, partition_df in tqdm(gr.center_expand(1000).as_df().drop('genome', axis=1).groupby('Chromosome'))])
     return input, target
 
 
@@ -96,8 +96,9 @@ def load_dataset(filename):
 
 # %%
 atac = read_bed("../test/test.atac.bed").as_df()
-atac_chr1 = atac[atac.Chromosome == 'chr1']
-atac_chr2 = atac[atac.Chromosome == 'chr2']
+atac_chr1 = atac[atac.Chromosome != 'chr8']
+atac_chr2 = atac[atac.Chromosome == 'chr8']
+#%%
 train_data, train_target = generate_dataset(hg38, atac_chr1)
 test_data, test_target = generate_dataset(hg38, atac_chr2)
 # %%
