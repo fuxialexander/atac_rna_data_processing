@@ -1,14 +1,16 @@
 #!/bin/bash
-# Sample prefix name, e.g. test
 
+
+#First, we have to activate the apropriate environment
+conda activate atac_rna_processing
+
+# Sample prefix name, e.g. test
 SAMPLE=$1
 
 # Set assembly with default hg38
-
 ASSEMBLY=${2:-hg38}
 
 # set memory and cpu with defaults
-
 MEM=${3:-10G}
 CPU=${4:-1}
 
@@ -20,14 +22,15 @@ echo "Assembly options: hg38 or mm10"
 exit 1
 fi
 
+# rm ${SAMPLE}.atac.motif.bed
+rm *chr*
 # Using tabix to extract the archetype motifs in atac peak regions for the given assembly
 # if ${SAMPLE}.atac.motif.bed not exist:
-if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
-    tabix -T ${SAMPLE}.atac.bed https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
-fi
+# if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
+#     tabix -T ${SAMPLE}.atac.bed https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
+# fi
 
-# Using awk to extract the chromosome and motif information from the bed file
-
+# Using awk to extract the chromosome and motif information from the bed files
 awk -v SAMPLE=${SAMPLE} '{OFS="\t"; print $1,$2,$3 > SAMPLE".atac."$1}' ${SAMPLE}.atac.bed
 awk -v SAMPLE=${SAMPLE} '{print > SAMPLE".atac.motif."$1}' ${SAMPLE}.atac.motif.bed
 
@@ -38,3 +41,6 @@ ls ${SAMPLE}.atac.motif.chr* | sed 's/.*motif.//' | parallel --memfree ${MEM} -j
 # Using xargs and sort to concatenate all the peak motif files into one bed file
 
 ls ${SAMPLE}.atac.peak_motif* | sort -k1,1V | xargs cat > ${SAMPLE}.peak_motif.bed
+
+#when the process is finished, we can remove the intermediate files with the following line:
+#rm -rf test.atac*chr*

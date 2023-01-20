@@ -89,7 +89,7 @@ This should keep the 4th column of the BED file intact.
 This can be achieved by running the following BASH command:
 
 ```{bash}
-# go to the root directory of the repository
+#Go to the root directory of the repository
 export PATH=$(pwd)/scripts:$PATH
 # go to data directory
 cd test
