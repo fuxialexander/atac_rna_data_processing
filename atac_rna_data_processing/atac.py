@@ -6,8 +6,11 @@ from pyranges import PyRanges as pr
 from scipy.sparse import csr_matrix, save_npz
 import yaml
 
+
 class ATAC(object):
     """class of ATAC-seq data
+    Use the __init__() function to assign values to object properties, or other operations that are necessary to do when the object is being created
+The self parameter is a reference to the current instance of the class, and is used to access variables that belongs to the class.
     """
 
     def __init__(self, sample, assembly):
@@ -23,10 +26,11 @@ class ATAC(object):
         if not path.exists(self.sample + ".csv"):
             self.export_data()
         return
-
+#Returns a string as a representation of the object.
     def __repr__(self) -> str:
         return f"ATAC-seq data of {self.sample}\nAssembly: {self.assembly}\nNumber of ATAC peaks: {self.accessibility.shape[0]}\nNumber of motifs: {self.motif_data.shape[1]}"
 
+#Reads a atac from a file. Return a csr_array with TPM
     def read_atac(self):
         """
         Reads a atac from a file. Return a csr_array with TPM
@@ -37,14 +41,18 @@ class ATAC(object):
         # bed.Start = bed.Start.astype(int)
         # bed.End = bed.End.astype(int)
         return bed  # [nonzero_indices, :], nonzero_indices
-
+    
+#df means dataframe, which is a 2-D labeled data structure with columns of potentially different types
     def get_motif_cutoff(tf, peak_motif):
         df = peak_motif[tf].values
         df = df[(df > 0)]
+        ## why do we divide by 10 the length of the dataframe?
         new_len = len(df)//10
+        #argsort returns the indices that would sort an array
         df = df[df.argsort()][-new_len]
         return df
-
+        
+    #Reads a peak motif bed file and returns a dataframe with the motifs in each peaks
     def get_peak_motif(self, with_cutoff=False):
         """
         Reads a peak motif bed file and returns a dataframe with the motifs in each peaks
@@ -77,6 +85,7 @@ class ATAC(object):
                 self.sample + ".atac.motif.output.feather")
         return self.sample + ".atac.motif.output.feather"
 
+ #Reads a data atac and a peak motif dataframe (previously generated) and returns a dataframe with the motifs and the accessibility
     def get_motif_data(self, final_index=None):
         """
         Reads a data atac and a peak motif dataframe and returns a dataframe with the motifs and the accessibility
@@ -126,4 +135,5 @@ class ATACWithAccessibilityCutOff(ATAC):
 class ATACWithSequence(ATAC):
     
     pass
+
 
