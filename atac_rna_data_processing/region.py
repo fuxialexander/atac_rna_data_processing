@@ -124,10 +124,12 @@ class GenomicRegionCollection(PyRanges):
         Expand the genomic region collection from peak center
         """
         peak_center = (self.df['End'] + self.df['Start']) // 2
-        self.df['Start'] = peak_center - target_size//2
-        self.df['End'] = peak_center + target_size//2
-        idx = (self.df['Start'] > 0)
-        return GenomicRegionCollection(genome=self.genome[idx], df=self.df[idx])
+        Start = peak_center - target_size//2
+        End = peak_center + target_size//2
+        if 'Strand' not in self.df.columns:
+            return GenomicRegionCollection(genome=self.genome, df=pd.DataFrame({'Chromosome': self.df['Chromosome'], 'Start': Start, 'End': End}))
+        else:
+            return GenomicRegionCollection(genome=self.genome, df=pd.DataFrame({'Chromosome': self.df['Chromosome'], 'Start': Start, 'End': End, 'Strand': self.df['Strand']}))
 
     # generator of GenomicRegion objects
     def __iter__(self):
