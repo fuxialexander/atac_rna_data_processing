@@ -8,40 +8,49 @@ import yaml
 
 from atac_rna_data_processing.io.gencode import Gencode
 
+def read_bed4(bedfile):
+    """
+    Reads a 4-columns BED file. Rename the columns to Chromosome, Start, End, and TPM
+    """
+    bed = pr(read_bed(bedfile, as_df=True).rename({'Name':'Score'}, axis=1), int64=True)
+    return bed
+
 class ATAC(object):
     """class of ATAC-seq data
     Use the __init__() function to assign values to object properties, or other operations that are necessary to do when the object is being created
 The self parameter is a reference to the current instance of the class, and is used to access variables that belongs to the class.
     """
 
-    def __init__(self, sample, assembly, version=40, tf_list=None):
+    def __init__(self, sample, assembly, version=40, scanned_motif=False, tf_list=None):
         super(ATAC, self).__init__()
         self.sample = sample
         self.assembly = assembly
         self.version = version
         self.peak_bed = self.read_atac()
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
-        self.peak_motif_feather = self.get_peak_motif()
-        self.motif_data = self.get_motif_data()
-        self.motif_dict = {motif: i for i, motif in enumerate(
-            self.motif_data.columns[3:-1])}
-        self.tf_accessibility = self.get_tf_accessibility(tf_list)
-        if not path.exists(self.sample + ".csv"):
-            self.export_data()
-
+        self.promoter_atac = self.get_promoter_atac()
+        self.tf_atac = self.get_tf_atac(tf_list)
+        if scanned_motif:
+            self.peak_motif_feather = self.get_peak_motif()
+            self.motif_data = self.get_motif_data()
+            self.motif_dict = {motif: i for i, motif in enumerate(
+                self.motif_data.columns[3:-1])}
+            if not path.exists(self.sample + ".csv"):
+                self.export_data()
         return
 #Returns a string as a representation of the object.
     def __repr__(self) -> str:
-        return f"ATAC-seq data of {self.sample}\nAssembly: {self.assembly}\nNumber of ATAC peaks: {self.accessibility.shape[0]}\nNumber of motifs: {self.motif_data.shape[1]}"
+        repr_str =  f"ATAC-seq data of {self.sample}\nAssembly: {self.assembly}\nNumber of ATAC peaks: {self.accessibility.shape[0]}"
+        if hasattr(self, 'motif_data'):
+            repr_str += f"\nNumber of motifs: {self.motif_data.shape[0]}"
+        return repr_str
 
 #Reads a atac from a file. Return a csr_array with TPM
     def read_atac(self):
         """
         Reads a atac from a file. Return a csr_array with TPM
         """
-        bed = read_bed(self.sample + ".atac.bed").as_df()
-        bed = bed.rename({'Name': 'Score'}, axis=1)
-        bed = pr(bed, int64=True)
+        bed = read_bed4(self.sample + ".atac.bed")
         # bed = atac.reset_index()['index'].str.split("-", expand=True)
         # bed.columns = ['Chromosome', 'Start', 'End']
         # bed.Start = bed.Start.astype(int)
@@ -94,14 +103,14 @@ The self parameter is a reference to the current instance of the class, and is u
     def normalize(self, x):
         return (x-x.min())/(x.max()-x.min())
 
-    def get_tf_accessibility(self, tf_list):
-        if tf_list == None:
-            return None
-        else:
-            tf_list = pd.read_csv(tf_list, header=0).gene_name.values
-            gencode = Gencode(assembly=self.assembly, version=self.version)
-            gencode_peak = self.peak_bed.join(pr(gencode.gtf, int64=True).extend(100), how='left').as_df()
-            return gencode_peak.query('gene_name in @tf_list').groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
+    # def get_tf_accessibility(self, tf_list):
+    #     if tf_list == None:
+    #         return None
+    #     else:
+    #         tf_list = pd.read_csv(tf_list, header=0).gene_name.values
+    #         gencode = Gencode(assembly=self.assembly, version=self.version)
+    #         gencode_peak = self.peak_bed.join(pr(gencode.gtf, int64=True).extend(100), how='left').as_df()
+    #         return gencode_peak.query('gene_name in @tf_list').groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
 
     def get_motif_data(self, final_index=None):
         """
@@ -126,6 +135,45 @@ The self parameter is a reference to the current instance of the class, and is u
         celltype_data.iloc[:, 4:-1] = self.normalize(celltype_data.iloc[:, 4:-1].values) #/ celltype_data.iloc[:, 4:-1].values.max()
         return celltype_data
 
+    def get_promoter_atac(self, force=False):
+        """Read the gene expression data."""
+        if not path.exists(self.sample + ".promoter_atac.feather") or force:
+            gencode = Gencode(assembly=self.assembly, version=self.version)
+            # gene_exp = pd.read_csv(self.sample + ".rna.csv", index_col=0)
+
+            # if the gene expression is in log10(TPM+1), no transformation is needed
+            # if self.transform:
+                # gene_exp['TPM'] = counts_to_log10tpm(gene_exp.TPM.values)
+
+            # log10tpm_check(gene_exp.TPM.values)
+
+            promoter_atac = (pr(gencode.gtf, int64=True)
+                            .extend(100)
+                            .join(self.peak_bed, how='left')
+                            .as_df())
+            promoter_atac.Score.replace(-1, 0, inplace=True)
+            promoter_atac = promoter_atac.groupby(
+                ['gene_name', 'gene_id']).Score.mean().reset_index()
+            promoter_atac.to_feather(self.sample + ".promoter_atac.feather")
+        else:
+            promoter_atac = pd.read_feather(
+                self.sample + ".promoter_atac.feather")
+            # if (promoter_exp.TPM.max() > 6) or (promoter_exp.TPM.min() < 0):
+            #     os.remove(self.sample + "promoter_exp.feather")
+            #     raise ValueError(
+            #         "The gene expression is not in log10(TPM+1), you should figure out the correct transformation.")
+
+        return promoter_atac#.drop(['level_0', 'index'], axis=1, errors='ignore')
+
+    def get_tf_atac(self, tf_list):
+        """Get the ATAC data of transcription factors."""
+        if tf_list is None:
+            return None
+        else:
+            tf_list = pd.read_csv(tf_list, header=0).gene_name.values
+            tf_atac = self.promoter_atac.query("gene_name in @tf_list")
+            return tf_atac.groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
+
     def export_data(self):
         """
         Exports the data to a YAML file, a csv file and a npz file,
@@ -145,13 +193,10 @@ The self parameter is a reference to the current instance of the class, and is u
         save_npz(self.sample + ".natac.npz",
                  csr_matrix(tmp_motif_data.iloc[:, 4:3+len(self.motif_dict)+1].values))
 
-        if self.tf_accessibility is not None:
-            np.save(self.sample + ".tf_accessibility.npy", self.tf_accessibility.values)
+        if self.tf_atac is not None:
+            np.save(self.sample + ".tf_atac.npy", self.tf_atac.Score.values)
 
 
-
-class ATACWithAccessibilityCutOff(ATAC):
-    pass
 
 class ATACWithSequence(ATAC):
     
