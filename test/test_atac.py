@@ -8,7 +8,13 @@ sys.path.append('..')
 # %%To import the object ATAC from the script atac.py
 from atac_rna_data_processing.atac import ATAC
 # %%
-atac = ATAC('test', 'hg38')
-# %%Exports the data to a YAML file, a csv file and a npz file,
+atac = ATAC('test', 'hg38', tf_list='../human/tf_list.csv')
+# %%
+atac.tf_accessibility
+# %%
 atac.export_data()
+
+# %%
+from scipy.sparse import load_npz
+x= load_npz("./test.natac.npz")
 # %%

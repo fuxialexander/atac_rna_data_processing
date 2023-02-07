@@ -52,6 +52,7 @@ class Gencode(object):
 
             self.gtf = pd.concat([positive, negative],
                                  0).drop_duplicates().reset_index()
+            self.gtf['gene_id'] = self.gtf.gene_id.str.split(".").str[0]
             self.gtf.to_feather("gencode.v{version}.{assembly}.feather".format(
                 version=str(version), assembly=self.assembly))
         return
