@@ -6,10 +6,34 @@ from tqdm import tqdm
 from pyliftover import LiftOver
 from pyranges import PyRanges
 from atac_rna_data_processing.sequence import DNASequence
-from atac_rna_data_processing.motif import pfm_conversion, prepare_scanner, print_results
+from atac_rna_data_processing.motif import (
+    pfm_conversion,
+    prepare_scanner,
+    print_results,
+)
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 from scipy.sparse import csr_matrix
 from pandas.api.types import CategoricalDtype
+
+
+def get_hic_from_idx(hic, csv, start, end, resolution=50000):
+    csv_region = csv.iloc[start:end]
+    chrom = csv_region.iloc[0].Chromosome.replace("chr", "")
+    if chrom != csv_region.iloc[-1].Chromosome.replace("chr", ""):
+        return None
+    start = csv_region.iloc[0].Start // resolution
+    end = csv_region.iloc[-1].End // resolution + 1
+    if (end - start) * resolution > 4000000:
+        return None
+    hic_idx = np.array(
+        [row.Start // resolution - start + 1 for _, row in csv_region.iterrows()]
+    )
+    mzd = hic.getMatrixZoomData(chrom, chrom, "oe", "KR", "BP", resolution)
+    numpy_matrix = mzd.getRecordsAsMatrix(
+        start * resolution, end * resolution, start * resolution, end * resolution
+    )
+    dst = np.log10(numpy_matrix[hic_idx, :][:, hic_idx] + 1)
+    return dst
 
 
 class Genome(object):
@@ -17,10 +41,10 @@ class Genome(object):
         self.fasta_file = fasta_file
         self.assembly = assembly
         self.genome_seq = Fasta(fasta_file)
-        if list(self.genome_seq.keys())[0].startswith('chr'):
-            self.chr_suffix = 'chr'
+        if list(self.genome_seq.keys())[0].startswith("chr"):
+            self.chr_suffix = "chr"
         else:
-            self.chr_suffix = ''
+            self.chr_suffix = ""
 
     def __repr__(self) -> str:
         return f"Genome: {self.assembly} with fasta file: {self.fasta_file}"
@@ -29,24 +53,40 @@ class Genome(object):
         """
         Normalize chromosome name
         """
-        if str(chromosome).startswith('chr'):
+        if str(chromosome).startswith("chr"):
             chromosome = str(chromosome)[3:]
 
         return self.chr_suffix + str(chromosome)
 
-    def get_sequence(self, chromosome, start, end, strand='+'):
+    def get_sequence(self, chromosome, start, end, strand="+"):
         """
         Get the sequence of the genomic region
         """
         chromosome = self.normalize_chromosome(chromosome)
-        if strand == '-':
-            return DNASequence(self.genome_seq[chromosome][start:end].seq.complement(), header=f"{chromosome}_{start}_{end}")
+        if strand == "-":
+            return DNASequence(
+                self.genome_seq[chromosome][start:end].seq.complement(),
+                header=f"{chromosome}_{start}_{end}",
+            )
         else:
-            return DNASequence(self.genome_seq[chromosome][start:end].seq, header=f"{chromosome}_{start}_{end}")
+            return DNASequence(
+                self.genome_seq[chromosome][start:end].seq,
+                header=f"{chromosome}_{start}_{end}",
+            )
+
+    def random_draw(self, chromosome, length=4_000_000, strand="+"):
+        """
+        Randomly draw a genomic region with given length
+        """
+        chromosome = self.normalize_chromosome(chromosome)
+        start = np.random.randint(0, len(self.genome_seq[chromosome]) - length)
+        return GenomicRegion(self, chromosome, start, start + length, strand)
 
 
 class GenomicRegion(object):
-    def __init__(self, genome: Genome, chromosome: str, start: int, end: int, strand: str = '+'):
+    def __init__(
+        self, genome: Genome, chromosome: str, start: int, end: int, strand: str = "+"
+    ):
         self.genome = genome
         self.chromosome = chromosome
         self.start = start
@@ -61,7 +101,9 @@ class GenomicRegion(object):
         """
         Get the sequence of the genomic region
         """
-        return self.genome.get_sequence(self.chromosome, self.start, self.end, self.strand)
+        return self.genome.get_sequence(
+            self.chromosome, self.start, self.end, self.strand
+        )
 
     @property
     def motif_score(self, motif):
@@ -76,7 +118,8 @@ class GenomicRegion(object):
         User need to provide the correct lo object
         """
         chromosome, start, end = lo.convert_coordinate(
-            self.chromosome, self.start, self.end)
+            self.chromosome, self.start, self.end
+        )
         if chromosome:
             return GenomicRegion(target_genome, chromosome, start, end, self.strand)
         else:
@@ -86,27 +129,45 @@ class GenomicRegion(object):
         """
         Get the flanking region of the genomic region
         """
-        return GenomicRegion(self.genome, self.chromosome, self.start - upstream, self.end + downstream, self.strand)
+        return GenomicRegion(
+            self.genome,
+            self.chromosome,
+            self.start - upstream,
+            self.end + downstream,
+            self.strand,
+        )
+
+    def tiling_region(self, tile_size, step_size):
+        """
+        Tile the genomic region into smaller regions
+        """
+        return GenomicRegionCollection(
+            self.genome,
+            chromosomes=[self.chromosome]
+            * ((self.end - self.start - tile_size) // step_size + 1),
+            starts=range(self.start, self.end - tile_size, step_size),
+            ends=range(self.start + tile_size, self.end, step_size),
+            strands=[self.strand]
+            * ((self.end - self.start - tile_size) // step_size + 1),
+        )
+
 
 
 class GenomicRegionCollection(PyRanges):
     """List of GenomicRegion objects"""
 
-    def __init__(self, genome,
-                 df=None,
-                 chromosomes=None,
-                 starts=None,
-                 ends=None,
-                 strands=None,
-                 int64=False,
-                 copy_df=True):
-        super().__init__(df,
-                        chromosomes,
-                        starts,
-                        ends,
-                        strands,
-                        int64,
-                        copy_df)
+    def __init__(
+        self,
+        genome,
+        df=None,
+        chromosomes=None,
+        starts=None,
+        ends=None,
+        strands=None,
+        int64=False,
+        copy_df=True,
+    ):
+        super().__init__(df, chromosomes, starts, ends, strands, int64, copy_df)
         self.genome = genome
 
     def __repr__(self) -> str:
@@ -116,36 +177,68 @@ class GenomicRegionCollection(PyRanges):
         """
         Save the genomic region collection to a bed file
         """
-        self.df[['Chromosome', 'Start', 'End', 'Strand']].to_csv(
-            file_name, sep='\t', header=False, index=False)
+        self.df[["Chromosome", "Start", "End", "Strand"]].to_csv(
+            file_name, sep="\t", header=False, index=False
+        )
 
     def center_expand(self, target_size):
         """
         Expand the genomic region collection from peak center
         """
-        peak_center = (self.df['End'] + self.df['Start']) // 2
-        Start = peak_center - target_size//2
-        End = peak_center + target_size//2
-        if 'Strand' not in self.df.columns:
-            return GenomicRegionCollection(genome=self.genome, df=pd.DataFrame({'Chromosome': self.df['Chromosome'], 'Start': Start, 'End': End}))
+        peak_center = (self.df["End"] + self.df["Start"]) // 2
+        Start = peak_center - target_size // 2
+        End = peak_center + target_size // 2
+        if "Strand" not in self.df.columns:
+            return GenomicRegionCollection(
+                genome=self.genome,
+                df=pd.DataFrame(
+                    {"Chromosome": self.df["Chromosome"], "Start": Start, "End": End}
+                ),
+            )
         else:
-            return GenomicRegionCollection(genome=self.genome, df=pd.DataFrame({'Chromosome': self.df['Chromosome'], 'Start': Start, 'End': End, 'Strand': self.df['Strand']}))
+            return GenomicRegionCollection(
+                genome=self.genome,
+                df=pd.DataFrame(
+                    {
+                        "Chromosome": self.df["Chromosome"],
+                        "Start": Start,
+                        "End": End,
+                        "Strand": self.df["Strand"],
+                    }
+                ),
+            )
 
     # generator of GenomicRegion objects
     def __iter__(self):
         for _, row in self.df.iterrows():
-            if 'Strand' not in row:
-                yield GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], '+')
+            if "Strand" not in row:
+                yield GenomicRegion(
+                    row["genome"], row["Chromosome"], row["Start"], row["End"], "+"
+                )
             else:
-                yield GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], row['Strand'])
+                yield GenomicRegion(
+                    row["genome"],
+                    row["Chromosome"],
+                    row["Start"],
+                    row["End"],
+                    row["Strand"],
+                )
 
     def __getitem__(self, val):
         if isinstance(val, int):
             row = self.df.iloc[val]
-            if 'Strand' not in row:
-                return GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], '+')
+            if "Strand" not in row:
+                return GenomicRegion(
+                    row["genome"], row["Chromosome"], row["Start"], row["End"], "+"
+                )
             else:
-                return GenomicRegion(row['genome'], row['Chromosome'], row['Start'], row['End'], row['Strand'])
+                return GenomicRegion(
+                    row["genome"],
+                    row["Chromosome"],
+                    row["Start"],
+                    row["End"],
+                    row["Strand"],
+                )
         else:
             return GenomicRegionCollection(self.genome.iloc[val], self.df.iloc[val])
 
@@ -154,11 +247,43 @@ class GenomicRegionCollection(PyRanges):
         Collect the sequence of the genomic regions
         """
         if mutations is None:
-            return [region.get_flanking_region(upstream, downstream).sequence for region in iter(self)]
+            return [
+                region.get_flanking_region(upstream, downstream).sequence
+                for region in iter(self)
+            ]
         else:
             pass
 
-    def scan_motif(self, motifs, mutations = None, non_negative=True, upstream=0, downstream=0):
+    def get_hic(self, hic, resolution=10000):
+        """
+        Get the Hi-C matrix of the genomic regions
+        """
+        start = self.df["Start"].min() // resolution
+        end = self.df["End"].max() // resolution + 1
+        hic_idx = np.array(
+            [
+                row.Start // resolution - start + 1
+                for _, row in self.df.iterrows()
+            ]
+        )
+        mzd = hic.getMatrixZoomData(
+            self.df.iloc[0].Chromosome.replace("chr", ""),
+            self.df.iloc[0].Chromosome.replace("chr", ""),
+            "oe",
+            "KR",
+            "BP",
+            resolution,
+        )
+        numpy_matrix = mzd.getRecordsAsMatrix(
+            start * resolution, end * resolution, start * resolution, end * resolution
+        )
+        dst = np.log10(numpy_matrix[hic_idx, :][:, hic_idx] + 1)
+        return dst
+        
+
+    def scan_motif(
+        self, motifs, mutations=None, non_negative=True, upstream=0, downstream=0
+    ):
         """
         Scan motif in sequence using MOODS.
 
@@ -190,54 +315,54 @@ class GenomicRegionCollection(PyRanges):
             lengths.append(len(s.seq))
 
         # concatenate the sequences with 100 Ns between each sequence
-        seq_cat = ('N'*100).join(sequences)
+        seq_cat = ("N" * 100).join(sequences)
         # get the list of sequence start and end positions in the concatenated sequence
-        starts = np.cumsum([0] + lengths[:-1]) + 100*np.arange(len(seqs))
+        starts = np.cumsum([0] + lengths[:-1]) + 100 * np.arange(len(seqs))
         ends = starts + np.array(lengths)
         headers = np.array(headers)
         # scan the concatenated sequence
         results = motifs.scanner.scan(seq_cat)
-        output = print_results("", seq_cat, motifs.matrices,
-                                motifs.matrix_names, results)
+        output = print_results(
+            "", seq_cat, motifs.matrices, motifs.matrix_names, results
+        )
         # convert the output list to a dataframe
         output = pd.DataFrame(
-            output, columns=['header', 'motif', 'pos', 'strand', 'score', 'seq'])
-        output['cluster'] = output.motif.map(motifs.motif_to_cluster)
+            output, columns=["header", "motif", "pos", "strand", "score", "seq"]
+        )
+        output["cluster"] = output.motif.map(motifs.motif_to_cluster)
 
         # assign header names in output dataframe based on 'pos' and starts/ends
         for i, h in enumerate(headers):
-            output.loc[(output.pos >= starts[i]) & (output.pos < ends[i]), 'header'] = h
+            output.loc[(output.pos >= starts[i]) & (output.pos < ends[i]), "header"] = h
 
         # remove the rows with multiple Ns
-        output = output[~output.seq.str.contains('NN')]
+        output = output[~output.seq.str.contains("NN")]
 
         output = (
-            output
-            .groupby(['header', 'pos',  'cluster']).score.max()
+            output.groupby(["header", "pos", "cluster"])
+            .score.max()
             .reset_index()
-            .groupby(['header', 'cluster']).score.sum()
+            .groupby(["header", "cluster"])
+            .score.sum()
             .reset_index()
         )
 
         if non_negative:
-            output.loc[output.score<0, 'score'] = 0
+            output.loc[output.score < 0, "score"] = 0
 
         motif_c = CategoricalDtype(categories=motifs.cluster_names, ordered=True)
         seq_c = CategoricalDtype(categories=headers, ordered=True)
-
 
         row = output.header.astype(seq_c).cat.codes
         col = output.cluster.astype(motif_c).cat.codes
 
         sparse_matrix = csr_matrix(
-            (output['score'], (row, col)), 
-            shape=(seq_c.categories.size, motif_c.categories.size)
-            )
-
+            (output["score"], (row, col)),
+            shape=(seq_c.categories.size, motif_c.categories.size),
+        )
 
         output = pd.DataFrame.sparse.from_spmatrix(
-            sparse_matrix, 
-            index=seq_c.categories, 
-            columns=motif_c.categories)
+            sparse_matrix, index=seq_c.categories, columns=motif_c.categories
+        )
 
         return output

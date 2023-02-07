@@ -6,6 +6,9 @@ from atac_rna_data_processing.rna import RNA
 a = RNA(sample='test', assembly='hg38', version=40, transform=True, tf_list="../human/tf_list.csv")
 # %%
 a.export_data()
+a.tf_exp
+
+#%%
 # %%
 a.get_tss_atac_idx('chr1', 778769)
 # %%

@@ -98,7 +98,6 @@ class RNA(object):
         exp = np.stack([exp_p, exp_n]).T
         return tss, exp
 
-
     def get_tf_exp(self, tf_list):
         """Get the expression data of transcription factors."""
         if tf_list is None:
