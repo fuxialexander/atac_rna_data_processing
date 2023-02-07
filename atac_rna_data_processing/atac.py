@@ -6,6 +6,7 @@ from pyranges import PyRanges as pr
 from scipy.sparse import csr_matrix, save_npz
 import yaml
 
+from atac_rna_data_processing.io.gencode import Gencode
 
 class ATAC(object):
     """class of ATAC-seq data
@@ -13,18 +14,21 @@ class ATAC(object):
 The self parameter is a reference to the current instance of the class, and is used to access variables that belongs to the class.
     """
 
-    def __init__(self, sample, assembly):
+    def __init__(self, sample, assembly, version=40, tf_list=None):
         super(ATAC, self).__init__()
         self.sample = sample
         self.assembly = assembly
+        self.version = version
         self.peak_bed = self.read_atac()
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
         self.peak_motif_feather = self.get_peak_motif()
         self.motif_data = self.get_motif_data()
         self.motif_dict = {motif: i for i, motif in enumerate(
             self.motif_data.columns[3:-1])}
+        self.tf_accessibility = self.get_tf_accessibility(tf_list)
         if not path.exists(self.sample + ".csv"):
             self.export_data()
+
         return
 #Returns a string as a representation of the object.
     def __repr__(self) -> str:
@@ -35,7 +39,9 @@ The self parameter is a reference to the current instance of the class, and is u
         """
         Reads a atac from a file. Return a csr_array with TPM
         """
-        bed = read_bed(self.sample + ".atac.bed")
+        bed = read_bed(self.sample + ".atac.bed").as_df()
+        bed = bed.rename({'Name': 'Score'}, axis=1)
+        bed = pr(bed, int64=True)
         # bed = atac.reset_index()['index'].str.split("-", expand=True)
         # bed.columns = ['Chromosome', 'Start', 'End']
         # bed.Start = bed.Start.astype(int)
@@ -85,7 +91,18 @@ The self parameter is a reference to the current instance of the class, and is u
                 self.sample + ".atac.motif.output.feather")
         return self.sample + ".atac.motif.output.feather"
 
- #Reads a data atac and a peak motif dataframe (previously generated) and returns a dataframe with the motifs and the accessibility
+    def normalize(self, x):
+        return (x-x.min())/(x.max()-x.min())
+
+    def get_tf_accessibility(self, tf_list):
+        if tf_list == None:
+            return None
+        else:
+            tf_list = pd.read_csv(tf_list, header=0).gene_name.values
+            gencode = Gencode(assembly=self.assembly, version=self.version)
+            gencode_peak = self.peak_bed.join(pr(gencode.gtf, int64=True).extend(100), how='left').as_df()
+            return gencode_peak.query('gene_name in @tf_list').groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
+
     def get_motif_data(self, final_index=None):
         """
         Reads a data atac and a peak motif dataframe and returns a dataframe with the motifs and the accessibility
@@ -103,10 +120,10 @@ The self parameter is a reference to the current instance of the class, and is u
         else:
             index_ac = np.arange(self.accessibility.shape[0])
             index_pm = np.arange(peak_motif.shape[0])
-        celltype_data = peak_motif.iloc[index_pm]
+        celltype_data = peak_motif.iloc[index_pm].fillna(0)
         accessibility = np.log2(self.accessibility[index_ac]+1)
         celltype_data['Accessibility'] = accessibility  # / accessibility.max()
-        # celltype_data.iloc[:, 3:3 + motif_num] = celltype_data.iloc[:, 3:3 + motif_num].values
+        celltype_data.iloc[:, 4:-1] = self.normalize(celltype_data.iloc[:, 4:-1].values) #/ celltype_data.iloc[:, 4:-1].values.max()
         return celltype_data
 
     def export_data(self):
@@ -122,11 +139,15 @@ The self parameter is a reference to the current instance of the class, and is u
             yaml.dump(metadata, outfile, default_flow_style=False)
         self.motif_data.iloc[:, 0:3].to_csv(self.sample + ".csv")
         save_npz(self.sample + ".watac.npz",
-                 csr_matrix(self.motif_data.iloc[:, 3:3+len(self.motif_dict)+1].values))
+                 csr_matrix(self.motif_data.iloc[:, 4:3+len(self.motif_dict)+1].values))
         tmp_motif_data = self.motif_data
         tmp_motif_data['Accessibility'] = 1
         save_npz(self.sample + ".natac.npz",
-                 csr_matrix(tmp_motif_data.iloc[:, 3:3+len(self.motif_dict)+1].values))
+                 csr_matrix(tmp_motif_data.iloc[:, 4:3+len(self.motif_dict)+1].values))
+
+        if self.tf_accessibility is not None:
+            np.save(self.sample + ".tf_accessibility.npy", self.tf_accessibility.values)
+
 
 
 class ATACWithAccessibilityCutOff(ATAC):

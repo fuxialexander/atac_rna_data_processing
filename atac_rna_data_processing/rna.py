@@ -21,25 +21,27 @@ def log10tpm_check(tpm):
 class RNA(object):
     """Base class for RNA expression data."""
 
-    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100):
+    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100, id_or_name='gene_name', tf_list=None):
         self.sample = sample
         self.assembly = assembly
         self.version = version
         self.transform = transform
         self.extend_bp = extend_bp
-        self.rna = self.read_rna()
+        self.rna = self.read_rna(id_or_name)
         self.tss, self.exp = self.get_data()
+        self.tf_exp = self.get_tf_exp(tf_list)
+
         self.export_data()
 
     def __repr__(self) -> str:
         return "RNA(sample={}, assembly={}, Gencode version=v{}, Max:{}, Mean: {}, Min:{})".format(self.sample, self.assembly, str(self.version), self.rna.TPM.max(), self.rna.TPM.mean(), self.rna.TPM.min())
 
-    def read_rna(self):
+    def read_rna(self, id_or_name):
         """Read the gene expression data."""
         if not os.path.exists(self.sample + ".promoter_exp.feather"):
             gencode = Gencode(assembly=self.assembly, version=self.version)
             gene_exp = pd.read_csv(self.sample + ".rna.csv", index_col=0)
-
+            print(gencode)
             # if the gene expression is in log10(TPM+1), no transformation is needed
             if self.transform:
                 gene_exp['TPM'] = counts_to_log10tpm(gene_exp.TPM.values)
@@ -47,7 +49,8 @@ class RNA(object):
             log10tpm_check(gene_exp.TPM.values)
 
             promoter_exp = pd.merge(gencode.gtf, gene_exp,
-                                    left_on='gene_name', right_index=True)
+                                    left_on=id_or_name, right_index=True)
+            print(promoter_exp)
             promoter_exp.reset_index().to_feather(self.sample + ".promoter_exp.feather")
         else:
             promoter_exp = pd.read_feather(
@@ -65,9 +68,9 @@ class RNA(object):
             exp = pd.read_feather(self.sample + ".exp.feather")
         else:
             # open the ATAC-seq data
-            atac = pr(pd.read_csv(self.sample + ".csv", index_col=0).reset_index())
+            atac = pr(pd.read_csv(self.sample + ".csv", index_col=0).reset_index(), int64=True)
             # join the ATAC-seq data with the RNA-seq data
-            exp = atac.join(pr(self.rna).extend(self.extend_bp), how='left').as_df()
+            exp = atac.join(pr(self.rna, int64=True).extend(self.extend_bp), how='left').as_df()
             # save the data to feather file
             exp.reset_index(drop=True).to_feather(self.sample + ".exp.feather")
 
@@ -95,10 +98,22 @@ class RNA(object):
         exp = np.stack([exp_p, exp_n]).T
         return tss, exp
 
+
+    def get_tf_exp(self, tf_list):
+        """Get the expression data of transcription factors."""
+        if tf_list is None:
+            return None
+        else:
+            tf_list = pd.read_csv(tf_list, header=0).gene_name.values
+            tf_exp = self.rna.query("gene_name in @tf_list")
+            return tf_exp.groupby('gene_name').TPM.mean().reindex(tf_list).fillna(0)
+
     def export_data(self):
         """Export the promoter expression data."""
         np.save(self.sample + ".exp.npy", self.exp)
         np.save(self.sample + ".tss.npy", self.tss)
+        if self.tf_exp is not None:
+            np.save(self.sample + ".tf_exp.npy", self.tf_exp.values)
     
     def get_gene(self, gene):
         """Get the expression data of a gene"""

@@ -7,7 +7,7 @@ from atac_rna_data_processing.region import *
 hg19 = Genome('hg19', '/home/xf2217/Projects/common/hg19.fasta')
 hg38 = Genome('hg38', '/home/xf2217/Projects/common/hg38.fa')
 
-gr = GenomicRegion(hg19, 'chr1', 10000, 12000)
+gr = GenomicRegion(hg19, 'chr1', 350000, 352000)
 # %%
 gr.sequence
 # %%
@@ -28,7 +28,7 @@ motifs = NrMotifV1("/home/xf2217/Projects/motif_databases/motif-clustering/")
 
 # %%
 from pyranges import read_bed
-atac = read_bed("test.atac.bed").head(100).as_df()
+atac = read_bed("test.atac.bed").as_df()
 
 # %%
 # local parallel using ipyparallel
@@ -50,7 +50,6 @@ with ipp.Cluster(n=14) as context:
 # %%
 atac_seq = [s.padding(target_length=1000, left=50).one_hot for s in GenomicRegionCollection(hg38, atac).collect_sequence()]
 # %%
-csr_matrix(results.values)
 
 # %%
 atac_seq

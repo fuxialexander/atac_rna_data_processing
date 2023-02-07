@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from MHA import *
+# from MHA import *
 from torch import einsum, nn
 
 
