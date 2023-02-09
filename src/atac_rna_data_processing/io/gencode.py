@@ -2,7 +2,7 @@ from pyranges import read_gtf
 from pyranges import PyRanges as pr
 import pandas as pd
 import os
-from ..gene import Gene
+from .gene import Gene
 
 
 class Gencode(object):

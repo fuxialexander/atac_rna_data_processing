@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pyranges import PyRanges as pr
 
-from atac_rna_data_processing.gene import GeneExp
+from atac_rna_data_processing.io.gene import GeneExp
 from atac_rna_data_processing.io.gencode import Gencode
 
 

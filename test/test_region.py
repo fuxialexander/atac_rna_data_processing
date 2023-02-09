@@ -1,13 +1,30 @@
 # %%
 import sys
 sys.path.append('..')
-from atac_rna_data_processing.region import *
+from atac_rna_data_processing.io.region import *
 #%%
 
 hg19 = Genome('hg19', '/home/xf2217/Projects/common/hg19.fasta')
 hg38 = Genome('hg38', '/home/xf2217/Projects/common/hg38.fa')
 
 gr = GenomicRegion(hg19, 'chr1', 350000, 352000)
+#%%
+import hicstraw
+hic = hicstraw.HiCFile("/home/xf2217/Projects/geneformer_nat/data/H1_ESC.hic")
+regiona = hg38.random_draw('chr2')
+a = regiona.get_hic(hic, resolution=25000)
+#%%
+ax = sns.heatmap(a)
+# set aspect 1:1
+ax.set_aspect('equal')
+#%%
+regiona.tiling_region(25000,25000)
+
+#%%
+
+
+
+
 # %%
 gr.sequence
 # %%
@@ -27,8 +44,8 @@ motifs = NrMotifV1("/home/xf2217/Projects/motif_databases/motif-clustering/")
 #%%
 
 # %%
-from pyranges import read_bed
-atac = read_bed("test.atac.bed").as_df()
+from atac_rna_data_processing.io.atac import read_bed4
+atac = read_bed4("test.atac.bed")#.as_df()
 
 # %%
 # local parallel using ipyparallel
