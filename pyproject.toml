@@ -1,0 +1,8 @@
+[tool.atac_rna_processing]
+name = "atac_rna_processing"
+version = "1.0.0"
+description = "A simple Python project"
+authors = ["Xi Fu <fu.xi@columbia.edu>"]
+
+[tool.atac_rna_processing.dependencies]
+python = "^3.10"

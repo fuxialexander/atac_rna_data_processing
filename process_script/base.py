@@ -2,9 +2,9 @@ from pyranges import read_gtf
 from pyranges import PyRanges as pr
 import pandas as pd
 import os
-from ..gene import Gene
+from ..io.gene import Gene
 from ..io.gencode import Gencode
-from ..atac import *
+from ..io.atac import *
 
 class REData(object):
     """Reads ATAC-seq and RNA-seq data from a given sample

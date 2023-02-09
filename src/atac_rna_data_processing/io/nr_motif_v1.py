@@ -1,7 +1,7 @@
 import pandas as pd
 from MOODS.tools import reverse_complement
 import os 
-from ..motif import *
+from .motif import *
 
 class NrMotifV1(MotifClusterCollection):
     """TFBS motif clusters defined in https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/."""

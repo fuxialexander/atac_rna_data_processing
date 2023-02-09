@@ -3,10 +3,13 @@ import pandas as pd
 import seaborn as sns
 from pyfaidx import Fasta
 from tqdm import tqdm
+import os
+import urllib.request
+
 from pyliftover import LiftOver
 from pyranges import PyRanges
-from atac_rna_data_processing.sequence import DNASequence
-from atac_rna_data_processing.motif import (
+from atac_rna_data_processing.io.sequence import DNASequence
+from atac_rna_data_processing.io.motif import (
     pfm_conversion,
     prepare_scanner,
     print_results,
@@ -16,24 +19,6 @@ from scipy.sparse import csr_matrix
 from pandas.api.types import CategoricalDtype
 
 
-def get_hic_from_idx(hic, csv, start, end, resolution=50000):
-    csv_region = csv.iloc[start:end]
-    chrom = csv_region.iloc[0].Chromosome.replace("chr", "")
-    if chrom != csv_region.iloc[-1].Chromosome.replace("chr", ""):
-        return None
-    start = csv_region.iloc[0].Start // resolution
-    end = csv_region.iloc[-1].End // resolution + 1
-    if (end - start) * resolution > 4000000:
-        return None
-    hic_idx = np.array(
-        [row.Start // resolution - start + 1 for _, row in csv_region.iterrows()]
-    )
-    mzd = hic.getMatrixZoomData(chrom, chrom, "oe", "KR", "BP", resolution)
-    numpy_matrix = mzd.getRecordsAsMatrix(
-        start * resolution, end * resolution, start * resolution, end * resolution
-    )
-    dst = np.log10(numpy_matrix[hic_idx, :][:, hic_idx] + 1)
-    return dst
 
 
 class Genome(object):
@@ -41,6 +26,14 @@ class Genome(object):
         self.fasta_file = fasta_file
         self.assembly = assembly
         self.genome_seq = Fasta(fasta_file)
+        url = "http://hgdownload.cse.ucsc.edu/goldenPath/{assembly}/bigZips/{assembly}.chrom.sizes".format(assembly=assembly)
+        # Download the hg38 chromosome sizes file
+        response = urllib.request.urlopen(url)
+        chrom_sizes = {}
+        for line in response:
+            chrom, size = line.strip().split(b"\t")
+            chrom_sizes[chrom.decode()] = int(size)
+        self.chrom_sizes = chrom_sizes
         if list(self.genome_seq.keys())[0].startswith("chr"):
             self.chr_suffix = "chr"
         else:
@@ -81,6 +74,24 @@ class Genome(object):
         chromosome = self.normalize_chromosome(chromosome)
         start = np.random.randint(0, len(self.genome_seq[chromosome]) - length)
         return GenomicRegion(self, chromosome, start, start + length, strand)
+
+    def get_chromosome_size(self, chromosome):
+        """
+        Get the size of the chromosome
+        """
+    
+    def tiling_region(self, chromosome, tile_size, step_size, strand="+"):
+        """
+        Tile the chromosome into smaller regions
+        """
+        chromosome = self.normalize_chromosome(chromosome)
+        return GenomicRegionCollection(
+            self,
+            chromosomes=[chromosome] * ((self.chrom_sizes[chromosome] - tile_size) // step_size + 1),
+            starts=range(0, self.chrom_sizes[chromosome]-tile_size, step_size),
+            ends = [s + tile_size for s in range(0, self.chrom_sizes[chromosome]-tile_size, step_size)],
+            strands=[strand] * ((self.chrom_sizes[chromosome] - tile_size) // step_size + 1),
+        )
 
 
 class GenomicRegion(object):
@@ -145,12 +156,34 @@ class GenomicRegion(object):
             self.genome,
             chromosomes=[self.chromosome]
             * ((self.end - self.start - tile_size) // step_size + 1),
-            starts=range(self.start, self.end - tile_size, step_size),
-            ends=range(self.start + tile_size, self.end, step_size),
+            starts=range(self.start, self.end, step_size),
+            ends = [s + tile_size for s in range(self.start, self.end, step_size)],
             strands=[self.strand]
             * ((self.end - self.start - tile_size) // step_size + 1),
         )
 
+    def get_hic(self, hic, resolution=25000):
+        """
+        Get the Hi-C matrix of the genomic regions
+        """
+        start = self.start#// resolution
+        end = self.end #// resolution + 1
+
+        mzd = hic.getMatrixZoomData(
+            self.chromosome.replace("chr", ""),
+            self.chromosome.replace("chr", ""),
+            "observed",
+            "KR",
+            "BP",
+            resolution,
+        )
+        numpy_matrix = mzd.getRecordsAsMatrix(
+            start, end, start, end
+            # start * resolution, end * resolution, start * resolution, end * resolution
+        )
+        dst = np.log10(numpy_matrix[1:, 1:] + 1)
+        return dst
+        
 
 
 class GenomicRegionCollection(PyRanges):
@@ -269,7 +302,7 @@ class GenomicRegionCollection(PyRanges):
         mzd = hic.getMatrixZoomData(
             self.df.iloc[0].Chromosome.replace("chr", ""),
             self.df.iloc[0].Chromosome.replace("chr", ""),
-            "oe",
+            "observed",
             "KR",
             "BP",
             resolution,

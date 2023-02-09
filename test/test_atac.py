@@ -6,7 +6,7 @@ import sys
 #The sys.path.append() method is used specifically to add a Path to the existing ones.
 sys.path.append('..')
 # %%To import the object ATAC from the script atac.py
-from atac_rna_data_processing.atac import ATAC
+from atac_rna_data_processing.io.atac import ATAC
 # %%
 atac = ATAC('test', 'hg38', tf_list="../human/tf_list.txt")
 # %%Exports the data to a YAML file, a csv file and a npz file,
