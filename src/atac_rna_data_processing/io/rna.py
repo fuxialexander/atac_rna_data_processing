@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 from pyranges import PyRanges as pr
-
+from pyranges import read_bed
 from atac_rna_data_processing.io.gene import GeneExp
 from atac_rna_data_processing.io.gencode import Gencode
 
@@ -21,11 +21,15 @@ def log10tpm_check(tpm):
 class RNA(object):
     """Base class for RNA expression data."""
 
-    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100, id_or_name='gene_name', tf_list=None):
+    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100, id_or_name='gene_name', tf_list=None, atac_file=None):
         self.sample = sample
         self.assembly = assembly
         self.version = version
         self.transform = transform
+        if atac_file is not None:
+            self.atac_file = atac_file
+        else:
+            self.atac_file = self.sample + ".csv"
         self.extend_bp = extend_bp
         self.rna = self.read_rna(id_or_name)
         self.tss, self.exp = self.get_data()
@@ -40,16 +44,17 @@ class RNA(object):
         """Read the gene expression data."""
         if not os.path.exists(self.sample + ".promoter_exp.feather"):
             gencode = Gencode(assembly=self.assembly, version=self.version)
-            gene_exp = pd.read_csv(self.sample + ".rna.csv", index_col=0)
-            print(gencode)
+            gene_exp = pd.read_csv(self.sample + ".rna.csv")
             # if the gene expression is in log10(TPM+1), no transformation is needed
             if self.transform:
                 gene_exp['TPM'] = counts_to_log10tpm(gene_exp.TPM.values)
 
             log10tpm_check(gene_exp.TPM.values)
-
+            if id_or_name == 'gene_id':
+                gencode.gtf['gene_id'] = gencode.gtf['gene_id'].apply(lambda x: x.split(".")[0])
+                gene_exp['gene_id'] = gene_exp.gene_id.apply(lambda x: x.split(".")[0])
             promoter_exp = pd.merge(gencode.gtf, gene_exp,
-                                    left_on=id_or_name, right_index=True)
+                                    left_on=id_or_name, right_on=id_or_name)
             print(promoter_exp)
             promoter_exp.reset_index().to_feather(self.sample + ".promoter_exp.feather")
         else:
@@ -68,12 +73,17 @@ class RNA(object):
             exp = pd.read_feather(self.sample + ".exp.feather")
         else:
             # open the ATAC-seq data
-            atac = pr(pd.read_csv(self.sample + ".csv", index_col=0).reset_index(), int64=True)
+            if self.atac_file.endswith(".bed"):
+                atac = pr(read_bed(self.atac_file).as_df().reset_index(), int64=True)
+            else:
+                atac = pr(pd.read_csv(self.sample + ".csv", index_col=0).reset_index(), int64=True)
             # join the ATAC-seq data with the RNA-seq data
+            print(atac)
             exp = atac.join(pr(self.rna, int64=True).extend(self.extend_bp), how='left').as_df()
             # save the data to feather file
             exp.reset_index(drop=True).to_feather(self.sample + ".exp.feather")
 
+        print(exp)
         # group the data by the strand and calculate the mean
         exp = exp[['index', 'Strand', 'TPM']
                         ].groupby(['index', 'Strand']).mean().reset_index()
