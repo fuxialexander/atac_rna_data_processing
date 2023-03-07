@@ -1,0 +1,3 @@
+[submodule "atac_rna_data_processing/lib/GENA_LM"]
+	path = atac_rna_data_processing/lib/GENA_LM
+	url = git@github.com:fuxialexander/GENA_LM.git
