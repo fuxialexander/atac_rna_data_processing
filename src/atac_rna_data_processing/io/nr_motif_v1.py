@@ -31,7 +31,7 @@ class NrMotifV1(MotifClusterCollection):
         self.matrix_names = self.get_motif_list()
         self.cluster_names = self.get_motifcluster_list()
         self.motif_to_cluster = self.annotations[['Motif', 'Name']].set_index('Motif').to_dict()['Name']
-
+        self.cluster_gene_list = self.get_motifcluster_list_genes()
 
     def get_motif_annotations(self, motif_dir, base_url):
         """Get motif clusters from the non-redundant motif v1.0 release."""
@@ -63,6 +63,21 @@ class NrMotifV1(MotifClusterCollection):
     def get_motifcluster_list(self):
         """Get list of motif clusters."""
         return sorted(self.annotations.Name.unique())
+
+    def get_motifcluster_list_genes(self):
+        cluster_gene_list = {}
+        for c in self.get_motifcluster_list():
+            for g in self.get_motif_cluster_by_name(c).get_gene_name_list():
+                if g.endswith('mouse'):
+                    pass
+                else:
+                    if c in cluster_gene_list:
+                        cluster_gene_list[c].append(g.upper())
+                    else:
+                        cluster_gene_list[c] = [g.upper()]
+            if c in cluster_gene_list:
+                cluster_gene_list[c] = list(set(cluster_gene_list[c]))
+        return cluster_gene_list
     
     def get_motif_cluster_by_name(self, mc_name):
         """Get motif cluster by name."""
