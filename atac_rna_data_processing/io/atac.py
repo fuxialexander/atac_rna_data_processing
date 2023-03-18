@@ -65,7 +65,7 @@ The self parameter is a reference to the current instance of the class, and is u
         motif_feather = pd.read_feather(feather_file)
         motif_feather.iloc[:, 4:] = motif_feather.iloc[:, 4:]/motif_feather.iloc[:, 4:].max()
         self.motif_data = motif_feather
-        self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End', 'Accessibility']], int64=True)
+        self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End']], int64=True)
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
         self.promoter_atac = self.get_promoter_atac()
         self.tf_atac = self.get_tf_atac(tf_list)
@@ -210,7 +210,7 @@ The self parameter is a reference to the current instance of the class, and is u
         """
         metadata = {'sample': self.sample,
                     'assembly': self.assembly,
-                    'motif_dict': self.motif_dict,
+                    # 'motif_dict': self.motif_dict,
                     'peak_motif_feather': self.peak_motif_feather}
         # save metadata to YAML file named self.sample + ".yaml"
         with open(self.sample + ".yml", 'w') as outfile:
