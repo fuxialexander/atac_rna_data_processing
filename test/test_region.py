@@ -54,7 +54,7 @@ with ipp.Cluster(n=14) as context:
     rc = context[:]
     rc.block = True
     rc.execute("import sys; sys.path.append('..')")
-    rc.execute("from atac_rna_data_processing.region import *")
+    rc.execute("from atac_rna_data_processing.io.region import *")
     rc.execute("from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1")
     rc.execute("motifs = NrMotifV1('/home/xf2217/Projects/motif_databases/motif-clustering/')")
     rc.execute("hg19 = Genome('hg19', '/home/xf2217/Projects/common/hg19.fasta')")
