@@ -211,20 +211,25 @@ The self parameter is a reference to the current instance of the class, and is u
         metadata = {'sample': self.sample,
                     'assembly': self.assembly,
                     # 'motif_dict': self.motif_dict,
-                    'peak_motif_feather': self.peak_motif_feather}
+                    }
+        # add 'peak_motif_feather': self.peak_motif_feather if self.peak_motif_feather else None
+        if hasattr(self, 'peak_motif_feather'):
+            metadata['peak_motif_feather'] = self.peak_motif_feather
         # save metadata to YAML file named self.sample + ".yaml"
         with open(self.sample + ".yml", 'w') as outfile:
             yaml.dump(metadata, outfile, default_flow_style=False)
-        self.motif_data.iloc[:, 0:3].to_csv(self.sample + ".csv")
-        save_npz(self.sample + ".watac.npz",
-                 csr_matrix(self.motif_data.iloc[:, 3:].values))
-        tmp_motif_data = self.motif_data.copy()
-        tmp_motif_data['Accessibility'] = 1
-        save_npz(self.sample + ".natac.npz",
-                 csr_matrix(tmp_motif_data.iloc[:, 3:].values))
+        
+        if hasattr(self, 'motif_data'):
+            self.motif_data.iloc[:, 0:3].to_csv(self.sample + ".csv")
+            save_npz(self.sample + ".watac.npz",
+                    csr_matrix(self.motif_data.iloc[:, 3:].values))
+            tmp_motif_data = self.motif_data.copy()
+            tmp_motif_data['Accessibility'] = 1
+            save_npz(self.sample + ".natac.npz",
+                    csr_matrix(tmp_motif_data.iloc[:, 3:].values))
 
         if self.tf_atac is not None:
-            np.save(self.sample + ".tf_atac.npy", self.tf_atac.Accessibility.values)
+            np.save(self.sample + ".tf_atac.npy", self.tf_atac.values)
 
 
 
