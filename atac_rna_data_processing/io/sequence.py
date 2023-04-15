@@ -1,7 +1,15 @@
 import numpy as np
 from pyliftover import LiftOver
 from Bio.Seq import Seq
+from Bio import SeqIO
 from scipy.sparse import csr_matrix
+import pandas as pd
+from atac_rna_data_processing.io.motif import (
+    pfm_conversion,
+    prepare_scanner,
+    print_results,
+)
+from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 # lo = LiftOver('hg19', 'hg38')
 # %%
 # hg19 = Fasta('/home/xf2217/Projects/common/hg19.fasta')
@@ -44,3 +52,79 @@ class DNASequence(Seq):
 
         return csr_matrix(np.array([self.one_hot_encoding[base] for base in self.seq]))
 
+class DNASequenceCollection():
+    """A collection of DNA sequences objects"""
+    def __init__(self, sequences):
+        self.sequences = sequences
+    
+    def from_fasta(filename):
+        """
+        Read a fasta file and create a DNASequenceCollection object using SeqIO.parse
+        """
+        return DNASequenceCollection(list(SeqIO.parse(filename, "fasta")))
+
+    def scan_motif(self, motifs, non_negative=True):
+        seqs = self.sequences
+        # initialize the output list
+        output = []
+        # scan each sequence and add the results to the output list
+        headers = []
+        lengths = []
+        sequences = []
+        for s in seqs:
+            sequences.append(str(s.seq))
+            headers.append(s.id)
+            lengths.append(len(str(s.seq)))
+
+        # concatenate the sequences with 100 Ns between each sequence
+        seq_cat = ("N" * 100).join(sequences)
+        # get the list of sequence start and end positions in the concatenated sequence
+        starts = np.cumsum([0] + lengths[:-1]) + 100 * np.arange(len(seqs))
+        ends = starts + np.array(lengths)
+        headers = np.array(headers)
+        # scan the concatenated sequence
+        results = motifs.scanner.scan(seq_cat)
+        output = print_results(
+            "", seq_cat, motifs.matrices, motifs.matrix_names, results
+        )
+        # convert the output list to a dataframe
+        output = pd.DataFrame(
+            output, columns=["header", "motif", "pos", "strand", "score", "seq"]
+        )
+        output["cluster"] = output.motif.map(motifs.motif_to_cluster)
+
+        # assign header names in output dataframe based on 'pos' and starts/ends
+        for i, h in enumerate(headers):
+            output.loc[(output.pos >= starts[i]) & (output.pos < ends[i]), "header"] = h
+
+        # remove the rows with multiple Ns
+        output = output[~output.seq.str.contains("NN")]
+
+        output = (
+            output.groupby(["header", "pos", "cluster"])
+            .score.max()
+            .reset_index()
+            .groupby(["header", "cluster"])
+            .score.sum()
+            .reset_index()
+        )
+
+        if non_negative:
+            output.loc[output.score < 0, "score"] = 0
+
+        motif_c = pd.CategoricalDtype(categories=motifs.cluster_names, ordered=True)
+        seq_c = pd.CategoricalDtype(categories=headers, ordered=True)
+
+        row = output.header.astype(seq_c).cat.codes
+        col = output.cluster.astype(motif_c).cat.codes
+
+        sparse_matrix = csr_matrix(
+            (output["score"], (row, col)),
+            shape=(seq_c.categories.size, motif_c.categories.size),
+        )
+
+        output = pd.DataFrame.sparse.from_spmatrix(
+            sparse_matrix, index=seq_c.categories, columns=motif_c.categories
+        )
+
+        return output

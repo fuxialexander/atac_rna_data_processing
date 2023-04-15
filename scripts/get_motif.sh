@@ -2,7 +2,12 @@
 
 
 #First, we have to activate the apropriate environment
-conda activate atac_rna_processing
+# check if the environment is already activated
+if [ -z "$CONDA_DEFAULT_ENV" ]; then
+    echo "Conda environment not activated"
+    echo "Activating conda environment"
+    conda activate atac_rna_processing
+fi
 
 # Sample prefix name, e.g. test
 SAMPLE=$1
