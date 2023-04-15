@@ -16,6 +16,5 @@ G549
 k562
 seq2motif
 hg19ToHg38.over.chain.gz
-human
 data
 *.egg-info
