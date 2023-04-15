@@ -35,7 +35,7 @@ The self parameter is a reference to the current instance of the class, and is u
 
         if union_motif:
             peak_bed = pr(self.read_atac().as_df().reset_index(), int64=True)
-            motif_df = peak_bed.join(union_motif,nb_cpu=28).as_df().pivot_table(index='index', columns='Cluster', values='Score', aggfunc='sum').fillna(0).reset_index()
+            motif_df = peak_bed.join(union_motif,nb_cpu=28).as_df().pivot_table(index='index', columns='Name', values='Score', aggfunc='sum').fillna(0).reset_index()
             motif_df = pd.merge(peak_bed.as_df(), motif_df, left_on='index', right_on='index').drop('index', axis=1)
             motif_df.to_feather(self.sample + ".atac.motif.output.feather")
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
@@ -224,7 +224,7 @@ The self parameter is a reference to the current instance of the class, and is u
                  csr_matrix(tmp_motif_data.iloc[:, 3:].values))
 
         if self.tf_atac is not None:
-            np.save(self.sample + ".tf_atac.npy", self.tf_atac.Accessibility.values)
+            np.save(self.sample + ".tf_atac.npy", self.tf_atac.values)
 
 
 
