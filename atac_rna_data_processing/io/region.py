@@ -19,8 +19,6 @@ from scipy.sparse import csr_matrix
 from pandas.api.types import CategoricalDtype
 
 
-
-
 class Genome(object):
     def __init__(self, assembly: str, fasta_file: str) -> None:
         self.fasta_file = fasta_file

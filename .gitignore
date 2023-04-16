@@ -18,3 +18,10 @@ seq2motif
 hg19ToHg38.over.chain.gz
 data
 *.egg-info
+human/fetal_adult
+human/GBM
+human/TCGA
+human/TFAtlas
+human/dhs
+human/lymph
+human/pbmc/

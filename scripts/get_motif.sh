@@ -27,13 +27,13 @@ echo "Assembly options: hg38 or mm10"
 exit 1
 fi
 
-# rm ${SAMPLE}.atac.motif.bed
+rm ${SAMPLE}.atac.motif.bed
 rm *chr*
 # Using tabix to extract the archetype motifs in atac peak regions for the given assembly
 # if ${SAMPLE}.atac.motif.bed not exist:
-# if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
-#     tabix -T ${SAMPLE}.atac.bed https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
-# fi
+if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
+    tabix -T ${SAMPLE}.atac.bed https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
+fi
 
 # Using awk to extract the chromosome and motif information from the bed files
 awk -v SAMPLE=${SAMPLE} '{OFS="\t"; print $1,$2,$3 > SAMPLE".atac."$1}' ${SAMPLE}.atac.bed
