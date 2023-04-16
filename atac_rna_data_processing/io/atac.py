@@ -13,9 +13,9 @@ def read_bed4(bedfile, filtered=True):
     Reads a 4-columns BED file. Rename the columns to Chromosome, Start, End, and TPM
     """
     if filtered:
-        bed = pr(read_bed(bedfile, as_df=True).rename({'Name':'Accessibility'}, axis=1).query('Accessibility>0'), int64=True)
+        bed = pr(read_bed(bedfile, as_df=True).rename({'Name':'Score'}, axis=1).query('Score>0'), int64=True)
     else:
-        bed = pr(read_bed(bedfile, as_df=True).rename({'Name':'Accessibility'}, axis=1), int64=True)
+        bed = pr(read_bed(bedfile, as_df=True).rename({'Name':'Score'}, axis=1), int64=True)
     return bed
 
 class ATAC(object):
@@ -24,7 +24,7 @@ class ATAC(object):
 The self parameter is a reference to the current instance of the class, and is used to access variables that belongs to the class.
     """
 
-    def __init__(self, sample, assembly, version=40, scanned_motif=False, union_motif=False, tf_list=None):
+    def __init__(self, sample, assembly, version=40, scanned_motif=False, union_motif=False,  tf_list=None):
         super(ATAC, self).__init__()
         self.sample = sample
         self.assembly = assembly
@@ -34,9 +34,12 @@ The self parameter is a reference to the current instance of the class, and is u
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
 
         if union_motif:
+            
             peak_bed = pr(self.read_atac().as_df().reset_index(), int64=True)
             motif_df = peak_bed.join(union_motif,nb_cpu=28).as_df().pivot_table(index='index', columns='Name', values='Score', aggfunc='sum').fillna(0).reset_index()
             motif_df = pd.merge(peak_bed.as_df(), motif_df, left_on='index', right_on='index').drop('index', axis=1)
+            motif_df['Accessibility'] = motif_df['Score'].values # move to the last column
+            self.motif_dict = motif_df.columns[4:].to_list()
             motif_df.to_feather(self.sample + ".atac.motif.output.feather")
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
             
@@ -65,7 +68,7 @@ The self parameter is a reference to the current instance of the class, and is u
         motif_feather = pd.read_feather(feather_file)
         motif_feather.iloc[:, 4:] = motif_feather.iloc[:, 4:]/motif_feather.iloc[:, 4:].max()
         self.motif_data = motif_feather
-        self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End']], int64=True)
+        self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End', 'Score']], int64=True)
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
         self.promoter_atac = self.get_promoter_atac()
         self.tf_atac = self.get_tf_atac(tf_list)
@@ -112,7 +115,7 @@ The self parameter is a reference to the current instance of the class, and is u
         else:
             peaks = self.peak_bed.as_df().reset_index()
             peak_motif = pd.read_csv(self.sample + ".peak_motif.bed", sep='\t', header=None, names=[
-                                     'chr', 'start', 'end', 'motif', 'score'])
+                                     'chr', 'start', 'end', 'motif', 'score']).drop_duplicates()
             peak_motif = peak_motif.pivot(
                 index=['chr', 'start', 'end'], columns='motif', values='score').reset_index().fillna(0)
             peak_motif = pd.merge(peaks, peak_motif, left_on=[
@@ -160,8 +163,7 @@ The self parameter is a reference to the current instance of the class, and is u
             index_ac = np.arange(self.accessibility.shape[0])
             index_pm = np.arange(peak_motif.shape[0])
         celltype_data = peak_motif.iloc[index_pm].fillna(0)
-        # accessibility = np.log2(self.accessibility[index_ac]+1)
-        celltype_data['Accessibility'] = accessibility  # / accessibility.max()
+        celltype_data['Accessibility'] = self.accessibility 
         celltype_data.iloc[:, 4:-1] = self.normalize(celltype_data.iloc[:, 4:-1].values) #/ celltype_data.iloc[:, 4:-1].values.max()
         return celltype_data
 
@@ -181,9 +183,9 @@ The self parameter is a reference to the current instance of the class, and is u
                             .extend(100)
                             .join(self.peak_bed, how='left')
                             .as_df())
-            promoter_atac.Accessibility.replace(-1, 0, inplace=True)
+            promoter_atac.Score.replace(-1, 0, inplace=True)
             promoter_atac = promoter_atac.groupby(
-                ['gene_name', 'gene_id']).Accessibility.mean().reset_index()
+                ['gene_name', 'gene_id']).Score.mean().reset_index()
             promoter_atac.to_feather(self.sample + ".promoter_atac.feather")
         else:
             promoter_atac = pd.read_feather(
@@ -202,7 +204,7 @@ The self parameter is a reference to the current instance of the class, and is u
         else:
             tf_list = pd.read_csv(tf_list, header=0).gene_name.values
             tf_atac = self.promoter_atac.query("gene_name in @tf_list")
-            return tf_atac.groupby('gene_name').Accessibility.mean().reindex(tf_list, fill_value=0)
+            return tf_atac.groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
 
     def export_data(self):
         """
