@@ -66,7 +66,8 @@ The self parameter is a reference to the current instance of the class, and is u
     def load_from_feather(self, feather_file, tf_list):
         self.peak_motif_feather = feather_file
         motif_feather = pd.read_feather(feather_file)
-        motif_feather.iloc[:, 4:] = motif_feather.iloc[:, 4:]/motif_feather.iloc[:, 4:].max()
+        motif_feather['Accessibility'] = motif_feather['Score'].values # move to the last column
+        motif_feather.iloc[:, 4:-1] = motif_feather.iloc[:, 4:-1]/motif_feather.iloc[:, 4:-1].max()
         self.motif_data = motif_feather
         self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End', 'Score']], int64=True)
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
@@ -224,11 +225,11 @@ The self parameter is a reference to the current instance of the class, and is u
         if hasattr(self, 'motif_data'):
             self.motif_data.iloc[:, 0:3].to_csv(self.sample + ".csv")
             save_npz(self.sample + ".watac.npz",
-                    csr_matrix(self.motif_data.iloc[:, 3:].values))
+                    csr_matrix(self.motif_data.iloc[:, 4:].values))
             tmp_motif_data = self.motif_data.copy()
             tmp_motif_data['Accessibility'] = 1
             save_npz(self.sample + ".natac.npz",
-                    csr_matrix(tmp_motif_data.iloc[:, 3:].values))
+                    csr_matrix(tmp_motif_data.iloc[:, 4:].values))
 
         if self.tf_atac is not None:
             np.save(self.sample + ".tf_atac.npy", self.tf_atac.values)
