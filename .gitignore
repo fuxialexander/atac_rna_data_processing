@@ -24,4 +24,5 @@ human/TCGA
 human/TFAtlas
 human/dhs
 human/lymph
-human/pbmc/
+human/pbmc
+human/pretrain_human_bingren_shendure_apr2023
