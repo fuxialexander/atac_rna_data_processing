@@ -8,7 +8,7 @@ import urllib.request
 
 from pyliftover import LiftOver
 from pyranges import PyRanges
-from atac_rna_data_processing.io.sequence import DNASequence
+from atac_rna_data_processing.io.sequence import DNASequence, DNASequenceCollection
 from atac_rna_data_processing.io.motif import (
     pfm_conversion,
     prepare_scanner,
@@ -278,11 +278,12 @@ class GenomicRegionCollection(PyRanges):
         Collect the sequence of the genomic regions
         """
         if mutations is None:
-            return [
+            return DNASequenceCollection([
                 region.get_flanking_region(upstream, downstream).sequence
                 for region in iter(self)
-            ]
+            ])
         else:
+            print("Not implemented yet")
             pass
 
     def get_hic(self, hic, resolution=10000):
