@@ -1,15 +1,16 @@
 import numpy as np
-from pyliftover import LiftOver
-from Bio.Seq import Seq
-from Bio import SeqIO
-from scipy.sparse import csr_matrix
 import pandas as pd
-from atac_rna_data_processing.io.motif import (
-    pfm_conversion,
-    prepare_scanner,
-    print_results,
-)
+from Bio import SeqIO
+from Bio.Seq import Seq
+from pyliftover import LiftOver
+from tqdm import tqdm
+from scipy.sparse import csr_matrix, save_npz, vstack
+
+from atac_rna_data_processing.io.motif import (pfm_conversion, prepare_scanner,
+                                               print_results)
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
+
+
 # lo = LiftOver('hg19', 'hg38')
 # %%
 # hg19 = Fasta('/home/xf2217/Projects/common/hg19.fasta')
@@ -128,3 +129,31 @@ class DNASequenceCollection():
         )
 
         return output
+
+
+    def save_npz(self, filename):
+        """
+        Save a DNASequenceCollection object as one-hot encoding in a sparse matrix in npz format,
+        with sequence length information included in the filename
+        """
+        # create a list to store the sparse matrices
+        sparse_matrices = []
+        
+        # loop over the sequences and create a sparse matrix for each one-hot encoding
+        for seq in tqdm(self.sequences):
+            # create the sparse matrix for the one-hot encoding
+            sparse_matrix = seq.one_hot.tocsr()
+            # add the sparse matrix to the list
+            sparse_matrices.append(sparse_matrix)
+        
+        # concatenate the sparse matrices vertically
+        sparse_matrix = vstack(sparse_matrices)
+        
+        # get the sequence length
+        seq_length = len(self.sequences[0].seq)
+        
+        # append sequence length to the filename
+        filename = f"{filename}_{seq_length}"
+        
+        # save the sparse matrix to a npz file with sequence length information in the filename
+        save_npz(filename, sparse_matrix)
