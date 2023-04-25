@@ -38,9 +38,13 @@ The self parameter is a reference to the current instance of the class, and is u
             peak_bed = pr(self.read_atac().as_df().reset_index(), int64=True)
             motif_df = peak_bed.join(union_motif,nb_cpu=28).as_df().pivot_table(index='index', columns='Name', values='Score', aggfunc='sum').fillna(0).reset_index()
             motif_df = pd.merge(peak_bed.as_df(), motif_df, left_on='index', right_on='index').drop('index', axis=1)
+<<<<<<< HEAD
             motif_df['Accessibility'] = motif_df['Score'].values # move to the last column
             self.motif_dict = motif_df.columns[4:].to_list()
             motif_df.to_feather(self.sample + ".atac.motif.output.feather")
+=======
+            motif_df.fillna(0).to_feather(self.sample + ".atac.motif.output.feather")
+>>>>>>> fb7cde2 (udpate atac, motif, region)
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
             
         self.peak_bed = self.read_atac()
@@ -69,7 +73,12 @@ The self parameter is a reference to the current instance of the class, and is u
         motif_feather['Accessibility'] = motif_feather['Score'].values # move to the last column
         motif_feather.iloc[:, 4:-1] = motif_feather.iloc[:, 4:-1]/motif_feather.iloc[:, 4:-1].max()
         self.motif_data = motif_feather
+<<<<<<< HEAD
         self.peak_bed = pr(motif_feather[['Chromosome', 'Start', 'End', 'Score']], int64=True)
+=======
+        self.peak_bed = motif_feather[['Chromosome', 'Start', 'End', 'Accessibility']]
+        self.peak_bed = pr(self.peak_bed, int64=True)
+>>>>>>> fb7cde2 (udpate atac, motif, region)
         self.accessibility = self.peak_bed.as_df().iloc[:,3].values
         self.promoter_atac = self.get_promoter_atac()
         self.tf_atac = self.get_tf_atac(tf_list)
@@ -135,7 +144,7 @@ The self parameter is a reference to the current instance of the class, and is u
         return self.sample + ".atac.motif.output.feather"
 
     def normalize(self, x):
-        return (x-x.min())/(x.max()-x.min())
+        return (x-x.min(0))/(x.max(0)-x.min(0))
 
     # def get_tf_accessibility(self, tf_list):
     #     if tf_list == None:
@@ -224,6 +233,9 @@ The self parameter is a reference to the current instance of the class, and is u
         
         if hasattr(self, 'motif_data'):
             self.motif_data.iloc[:, 0:3].to_csv(self.sample + ".csv")
+            tmp_motif_data = self.motif_data.copy().iloc[:, 4:]
+            # move Accessibility to the last column
+            tmp_motif_data['Accessibility'] = self.motif_data.Accessibility
             save_npz(self.sample + ".watac.npz",
                     csr_matrix(self.motif_data.iloc[:, 4:].values))
             tmp_motif_data = self.motif_data.copy()
