@@ -83,7 +83,7 @@ class DNASequenceCollection():
         """
         return DNASequenceCollection([seq.mutate(pos, alt) for seq, pos, alt in zip(self.sequences, pos_list, alt_list)])
 
-    def scan_motif(self, motifs, non_negative=True):
+    def scan_motif(self, motifs, non_negative=True, raw = False):
         seqs = self.sequences
         # initialize the output list
         output = []
@@ -93,7 +93,7 @@ class DNASequenceCollection():
         sequences = []
         for s in seqs:
             sequences.append(str(s.seq))
-            headers.append(s.id)
+            headers.append(s.header)
             lengths.append(len(str(s.seq)))
 
         # concatenate the sequences with 100 Ns between each sequence
@@ -119,7 +119,10 @@ class DNASequenceCollection():
 
         # remove the rows with multiple Ns
         output = output[~output.seq.str.contains("NN")]
-
+        
+        if raw == True:
+            return output
+            
         output = (
             output.groupby(["header", "pos", "cluster"])
             .score.max()
