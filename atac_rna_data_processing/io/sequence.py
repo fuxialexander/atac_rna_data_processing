@@ -43,6 +43,19 @@ class DNASequence(Seq):
             return DNASequence('N' * left + self.seq + 'N' * (target_length - len(self.seq)- left), self.header)
         elif target_length < len(self.seq):
             return DNASequence(self.seq[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
+    
+    def mutate(self, pos, alt):
+        """
+        Mutate a DNA sequence using biopython
+        """
+        from Bio.Seq import MutableSeq
+        if len(alt) == 1:
+            seq = MutableSeq(self.seq)
+            seq[pos] = alt
+        else: 
+            seq = str(self.seq)
+            seq = seq[0:pos] + alt + seq[pos+1:]
+        return DNASequence(str(seq), self.header)
 
     #attribute to get one-hot encoding
     @property
@@ -63,6 +76,12 @@ class DNASequenceCollection():
         Read a fasta file and create a DNASequenceCollection object using SeqIO.parse
         """
         return DNASequenceCollection(list(SeqIO.parse(filename, "fasta")))
+
+    def mutate(self, pos_list, alt_list):
+        """
+        Mutate a DNASequenceCollection object
+        """
+        return DNASequenceCollection([seq.mutate(pos, alt) for seq, pos, alt in zip(self.sequences, pos_list, alt_list)])
 
     def scan_motif(self, motifs, non_negative=True):
         seqs = self.sequences

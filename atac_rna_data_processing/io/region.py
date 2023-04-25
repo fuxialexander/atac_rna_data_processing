@@ -272,6 +272,10 @@ class GenomicRegionCollection(PyRanges):
         else:
             return GenomicRegionCollection(self.genome.iloc[val], self.df.iloc[val])
 
+    #assign a new column to the pyranges
+    def __setattr__(self, column_name, column):
+        return super().__setattr__(column_name, column)
+
     def collect_sequence(self, mutations=None, upstream=0, downstream=0):
         """
         Collect the sequence of the genomic regions
