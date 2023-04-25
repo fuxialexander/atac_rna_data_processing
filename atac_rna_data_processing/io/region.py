@@ -114,12 +114,11 @@ class GenomicRegion(object):
             self.chromosome, self.start, self.end, self.strand
         )
 
-    @property
-    def motif_score(self, motif):
+    def get_motif_score(self, motif):
         """
         Get the motif score of the genomic region
         """
-        return motif.score(self.sequence)
+        return "Not implemented yet"
 
     def lift_over(self, target_genome, lo):
         """
@@ -314,8 +313,8 @@ class GenomicRegionCollection(PyRanges):
         
 
     def scan_motif(
-        self, motifs, mutations=None, non_negative=True, upstream=0, downstream=0
-    ):
+        self, motifs, mutations=None, non_negative=True, upstream=0, downstream=0,
+raw=False):
         """
         Scan motif in sequence using MOODS.
 
@@ -369,7 +368,8 @@ class GenomicRegionCollection(PyRanges):
 
         # remove the rows with multiple Ns
         output = output[~output.seq.str.contains("NN")]
-
+        if raw:
+            return output
         output = (
             output.groupby(["header", "pos", "cluster"])
             .score.max()
