@@ -38,13 +38,9 @@ The self parameter is a reference to the current instance of the class, and is u
             peak_bed = pr(self.read_atac().as_df().reset_index(), int64=True)
             motif_df = peak_bed.join(union_motif,nb_cpu=28).as_df().pivot_table(index='index', columns='Name', values='Score', aggfunc='sum').fillna(0).reset_index()
             motif_df = pd.merge(peak_bed.as_df(), motif_df, left_on='index', right_on='index').drop('index', axis=1)
-<<<<<<< HEAD
             motif_df['Accessibility'] = motif_df['Score'].values # move to the last column
             self.motif_dict = motif_df.columns[4:].to_list()
             motif_df.to_feather(self.sample + ".atac.motif.output.feather")
-=======
-            motif_df.fillna(0).to_feather(self.sample + ".atac.motif.output.feather")
->>>>>>> fb7cde2 (udpate atac, motif, region)
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
             
         self.peak_bed = self.read_atac()
