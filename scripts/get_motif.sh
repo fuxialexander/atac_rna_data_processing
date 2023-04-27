@@ -32,7 +32,7 @@ rm *chr*
 # Using tabix to extract the archetype motifs in atac peak regions for the given assembly
 # if ${SAMPLE}.atac.motif.bed not exist:
 if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
-    tabix -T ${SAMPLE}.atac.bed https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
+    tabix -T ${SAMPLE}.atac.bed ${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
 fi
 
 # Using awk to extract the chromosome and motif information from the bed files

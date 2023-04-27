@@ -26,3 +26,10 @@ human/dhs
 human/lymph
 human/pbmc
 human/pretrain_human_bingren_shendure_apr2023
+human/fetal_adult_npz_patch
+human/pdata
+test/hg38.fa.fai
+human/*.tar.gz
+human/hg38.archetype_motifs.v1.0.bed.gz.tbi
+human/hg38.archetype_motifs.v1.0.bed.gz
+scripts/atac_rna_data_processing.code-workspace
