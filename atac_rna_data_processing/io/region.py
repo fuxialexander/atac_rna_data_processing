@@ -218,11 +218,12 @@ class GenomicRegionCollection(PyRanges):
         peak_center = (self.df["End"] + self.df["Start"]) // 2
         Start = peak_center - target_size // 2
         End = peak_center + target_size // 2
+        index = self.df.index.values
         if "Strand" not in self.df.columns:
             return GenomicRegionCollection(
                 genome=self.genome,
                 df=pd.DataFrame(
-                    {"Chromosome": self.df["Chromosome"], "Start": Start, "End": End}
+                    {"Chromosome": self.df["Chromosome"], "Start": Start, "End": End, "Index": index}
                 ),
             )
         else:
@@ -234,6 +235,8 @@ class GenomicRegionCollection(PyRanges):
                         "Start": Start,
                         "End": End,
                         "Strand": self.df["Strand"],
+                        "Index": index,
+
                     }
                 ),
             )
