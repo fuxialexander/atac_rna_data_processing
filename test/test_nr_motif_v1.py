@@ -2,8 +2,13 @@
 import sys
 sys.path.append('..')
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
-
+#%%
 motif = NrMotifV1("/home/xf2217/Projects/motif_databases/motif-clustering/")
+#%%
+motif.save_to_pickle('../data/NrMotifV1.pkl')
+
+#%%
+motif = NrMotifV1.load_from_pickle('../data/NrMotifV1.pkl')
 # %%
 motif.get_motif_list()
 # %%

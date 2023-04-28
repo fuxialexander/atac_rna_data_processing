@@ -1,3 +1,4 @@
+import pickle
 import pandas as pd
 from MOODS.tools import reverse_complement
 import os 
@@ -32,6 +33,28 @@ class NrMotifV1(MotifClusterCollection):
         self.cluster_names = self.get_motifcluster_list()
         self.motif_to_cluster = self.annotations[['Motif', 'Name']].set_index('Motif').to_dict()['Name']
         self.cluster_gene_list = self.get_motifcluster_list_genes()
+
+    # facility to export the instance as a pickle and load it back
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def save_to_pickle(self, file_path):
+        """Save the instance of the NrMotifV1 class to a pickle file."""
+        with open(file_path, 'wb') as f:
+            pickle.dump(self.__getstate__(), f)
+
+    @classmethod
+    def load_from_pickle(cls, file_path):
+        """Load the instance of the NrMotifV1 class from a pickle file."""
+        with open(file_path, 'rb') as f:
+            state = pickle.load(f)
+        instance = cls.__new__(cls)
+        instance.__setstate__(state)
+        return instance
 
     def get_motif_annotations(self, motif_dir, base_url):
         """Get motif clusters from the non-redundant motif v1.0 release."""
