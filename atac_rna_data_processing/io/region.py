@@ -289,8 +289,26 @@ class GenomicRegionCollection(PyRanges):
                 for region in iter(self)
             ])
         else:
-            print("Not implemented yet")
-            pass
+            # first ensure the mutations are in the same genome
+            if mutations.genome != self.genome:
+                raise ValueError("The mutations are not in the same genome")
+            # then collect the reference sequence
+            ref_seq = self.collect_sequence(mutations=None, upstream=0, downstream=0)
+            # overlap the mutations with the genomic regions to determine where the mutations are
+            overlap = mutations.overlap(self)
+            # calculate the relative position of the mutations in the genomic regions
+            relative_pos = overlap.df["Start"].values - overlap.df["Start_b"].values
+            # mutate the reference sequence for each mutation
+            mutated_seq = [
+                seq.mutate(
+                    relative_pos[i],
+                    mutations.df.iloc[i]["Reference"],
+                    mutations.df.iloc[i]["Alternate"],
+                )
+                for i, seq in enumerate(ref_seq)
+            ]
+
+            return DNASequenceCollection(mutated_seq)
 
     def get_hic(self, hic, resolution=10000):
         """
