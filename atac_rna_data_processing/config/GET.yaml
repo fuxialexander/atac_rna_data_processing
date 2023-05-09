@@ -1,0 +1,7 @@
+celltype:
+  features: "NrMotifV1"
+  num_region_per_sample: 200
+  data_dir: "/home/xf2217/Projects/pretrain_human_bingren_shendure_apr2023/k562/"
+  interpret_dir: "/home/xf2217/Projects/geneformer_nova/interpret_input_masked/"
+  input: True
+  jacob: True
