@@ -16,7 +16,7 @@ G549
 k562
 seq2motif
 hg19ToHg38.over.chain.gz
-data
+data/genome
 *.egg-info
 human/fetal_adult
 human/GBM
@@ -33,3 +33,4 @@ human/*.tar.gz
 human/hg38.archetype_motifs.v1.0.bed.gz.tbi
 human/hg38.archetype_motifs.v1.0.bed.gz
 scripts/atac_rna_data_processing.code-workspace
+motif_annotations.csv
