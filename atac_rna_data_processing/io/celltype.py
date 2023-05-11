@@ -1,18 +1,17 @@
-from ast import Expression
-from matplotlib.patches import Rectangle
+import os
 import numpy as np
 import pandas as pd
-from scipy.sparse import load_npz, csr_matrix
-import matplotlib.pyplot as plt
-from scipy.stats import spearmanr, pearsonr
-from scipy.linalg import norm
 import pkg_resources
-import os
-from atac_rna_data_processing.io.gene import Gene, TSS, GeneExp
 import seaborn as sns
+from atac_rna_data_processing.config.load_config import *
+from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
-from atac_rna_data_processing.config.load_config import *
+from matplotlib.patches import Rectangle
+from scipy.linalg import norm
+from scipy.sparse import csr_matrix, load_npz
+from scipy.stats import pearsonr, spearmanr
+
 motif = NrMotifV1.load_from_pickle(pkg_resources.resource_filename('atac_rna_data_processing', 'data/NrMotifV1.pkl'))
 # cannot find ../data/NrMotifV1.pkl, fix it using 
 
@@ -34,7 +33,7 @@ class Celltype:
 
     def __init__(self, features: np.ndarray, num_region_per_sample: int, 
                  celltype: str, data_dir="../pretrain_human_bingren_shendure_apr2023",
-                 interpret_dir="Interpretation", input=False, jacob=False):
+                 interpret_dir="Interpretation", input=False, jacob=False, num_cls=2):
         self.celltype = celltype
         self.data_dir = data_dir
         self.interpret_dir = interpret_dir
@@ -42,6 +41,7 @@ class Celltype:
         self.num_features = features.shape[0]
         self.num_region_per_sample = num_region_per_sample
         self.focus = num_region_per_sample // 2
+        self.num_cls = num_cls
         self.interpret_cell_dir = os.path.join(
             self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f'{self.data_dir}/{celltype}.exp.feather'
@@ -68,10 +68,10 @@ class Celltype:
                 self.interpret_cell_dir, "jacobians.npz"))
         self.preds = load_npz(os.path.join(
             self.interpret_cell_dir, "preds.npz"))
-        self.preds = np.array([self.preds[i].toarray().reshape(self.num_region_per_sample, 2)[
+        self.preds = np.array([self.preds[i].toarray().reshape(self.num_region_per_sample, self.num_cls)[
                               self.focus, j] for i, j in enumerate(self.tss_strand)])
         self.obs = load_npz(os.path.join(self.interpret_cell_dir, "obs.npz"))
-        self.obs = np.array([self.obs[i].toarray().reshape(self.num_region_per_sample, 2)[
+        self.obs = np.array([self.obs[i].toarray().reshape(self.num_region_per_sample, self.num_cls)[
                             self.focus, j] for i, j in enumerate(self.tss_strand)])
         self.gene_annot['pred'] = self.preds
         self.gene_annot['obs'] = self.obs
@@ -140,7 +140,7 @@ class Celltype:
             input = self.get_input_data(peak_id=tss.peak_id, focus=self.focus)
             jacob = jacob * input
         region = tss.get_sample_from_peak(self.peak_annot, self.focus)
-        tss_jacob = OneTSSJacobian(jacob, tss, region, self.features)
+        tss_jacob = OneTSSJacobian(jacob, tss, region, self.features, self.num_cls)
         return tss_jacob
 
     def summarize_gene_jacobian(self, jacob: np.ndarray):
@@ -192,7 +192,8 @@ class GETCellType(Celltype):
         interpret_dir=config.celltype.interpret_dir
         input=config.celltype.input
         jacob=config.celltype.jacob
-        super().__init__(features, num_region_per_sample, celltype, data_dir, interpret_dir, input, jacob)
+        num_cls=config.celltype.num_cls
+        super().__init__(features, num_region_per_sample, celltype, data_dir, interpret_dir, input, jacob, num_cls)
 
     
 
