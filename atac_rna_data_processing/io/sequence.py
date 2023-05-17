@@ -20,11 +20,10 @@ from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 class DNASequence(Seq):
     def __init__(self, seq, header = ''):
         self.header = header
-        self.seq = seq.upper()
+        self.seq = str(seq).upper()
+        self._data = str(seq).upper()
         self.one_hot_encoding = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], 'N': [0, 0, 0, 0]}
     
-    def __repr__(self) -> str:
-        return f"DNA sequence: {self.seq}"
 
     def get_reverse_complement(self):
         """
@@ -70,6 +69,13 @@ class DNASequenceCollection():
     """A collection of DNA sequences objects"""
     def __init__(self, sequences):
         self.sequences = sequences
+
+    def __iter__(self):
+        """for each sequence in the collection, convert to DNASequence object"""
+        for seq in self.sequences:
+            yield DNASequence(str(seq.seq), seq.id)
+
+
     
     def from_fasta(filename):
         """
