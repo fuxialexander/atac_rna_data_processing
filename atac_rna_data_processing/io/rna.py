@@ -78,7 +78,6 @@ class RNA(object):
             else:
                 atac = pr(pd.read_csv(self.sample + ".csv", index_col=0).reset_index(), int64=True)
             # join the ATAC-seq data with the RNA-seq data
-            print(atac.shape)
             exp = atac.join(pr(self.rna, int64=True).extend(self.extend_bp), how='left').as_df()
             # save the data to feather file
             exp.reset_index(drop=True).to_feather(self.sample + ".exp.feather")

@@ -33,3 +33,4 @@ human/*.tar.gz
 human/hg38.archetype_motifs.v1.0.bed.gz.tbi
 human/hg38.archetype_motifs.v1.0.bed.gz
 scripts/atac_rna_data_processing.code-workspace
+human/tn5bias
