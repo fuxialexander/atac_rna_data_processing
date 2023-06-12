@@ -7,6 +7,7 @@ from scipy.sparse import csr_matrix, save_npz
 import yaml
 
 from atac_rna_data_processing.io.gencode import Gencode
+from atac_rna_data_processing.io.region import *
 
 def read_bed4(bedfile, filtered=True):
     """
@@ -208,6 +209,15 @@ The self parameter is a reference to the current instance of the class, and is u
             tf_atac = self.promoter_atac.query("gene_name in @tf_list")
             return tf_atac.groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
 
+    def get_sequence(self, slop=100):
+        """Get the sequence of the peaks, extended by slop bp on each side."""
+        # load genome sequence of assembly
+        genome = Genome(assembly=self.assembly, fasta_file=f'{self.assembly}.fa')
+        # get the sequence of the peaks
+        bed = GenomicRegionCollection(genome, self.peak_bed)
+        seq = bed.collect_sequence(upstream=slop, downstream=slop)
+        return seq
+
     def export_data(self):
         """
         Exports the data to a YAML file, a csv file and a npz file,
@@ -237,11 +247,29 @@ The self parameter is a reference to the current instance of the class, and is u
 
         if self.tf_atac is not None:
             np.save(self.sample + ".tf_atac.npy", self.tf_atac.values)
+        
+        if self.sequence is not None:
+            self.sequence.save_npz(self.sample + f".seq.slop_{self.seq_slop}.npz")
 
 
+class ATACWithSequence(object):
+    """Read an ATAC peak bed file and collect and save the sequence of the peaks."""
+    def __init__(self, sample, genome, slop=100, target_length=2000, save_as='npz') -> None:
+        # load genome sequence of assembly
+        # load the peak bed file using read_bed4
+        self.peak_bed = read_bed4(sample + ".atac.bed")
+        # get the sequence of the peaks
+        bed = GenomicRegionCollection(genome, self.peak_bed.df)
+        self.sequence = bed.collect_sequence(upstream=slop, downstream=slop, target_length=target_length)
 
-class ATACWithSequence(ATAC):
-    
-    pass
-
+    def save_sequence(self, sample, save_as='npz'): 
+        if save_as == 'npz':
+            # save the sequence to a npz file
+            self.sequence.save_npz(sample + f".seq.npz")
+        elif save_as == 'txt':
+            # save the sequence to a txt file
+            self.sequence.save_txt(sample + f".seq.txt")
+        elif save_as == 'zarr':
+            # save the sequence to a zarr file
+            self.sequence.save_zarr(sample + f".seq.zarr.zip")
 

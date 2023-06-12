@@ -5,7 +5,7 @@ from Bio.Seq import Seq
 from pyliftover import LiftOver
 from tqdm import tqdm
 from scipy.sparse import csr_matrix, save_npz, vstack
-
+import zarr
 from atac_rna_data_processing.io.motif import (pfm_conversion, prepare_scanner,
                                                print_results)
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
@@ -38,7 +38,7 @@ class DNASequence(Seq):
         """
         if target_length == 0:
             return DNASequence('N' * left + self.seq + 'N' * right, self.header)
-        elif target_length > len(self.seq):
+        elif target_length >= len(self.seq):
             return DNASequence('N' * left + self.seq + 'N' * (target_length - len(self.seq)- left), self.header)
         elif target_length < len(self.seq):
             return DNASequence(self.seq[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
@@ -63,7 +63,7 @@ class DNASequence(Seq):
         Get one-hot encoding of a DNA sequence
         """
 
-        return csr_matrix(np.array([self.one_hot_encoding[base] for base in self.seq]))
+        return np.array([self.one_hot_encoding[base] for base in self.seq]).astype(np.int8).reshape(-1, 4)
 
 class DNASequenceCollection():
     """A collection of DNA sequences objects"""
@@ -170,18 +170,34 @@ class DNASequenceCollection():
         # loop over the sequences and create a sparse matrix for each one-hot encoding
         for seq in tqdm(self.sequences):
             # create the sparse matrix for the one-hot encoding
-            sparse_matrix = seq.one_hot.tocsr()
+            sparse_matrix = csr_matrix(seq.one_hot)
             # add the sparse matrix to the list
             sparse_matrices.append(sparse_matrix)
         
         # concatenate the sparse matrices vertically
         sparse_matrix = vstack(sparse_matrices)
         
-        # get the sequence length
-        seq_length = len(self.sequences[0].seq)
-        
-        # append sequence length to the filename
-        filename = f"{filename}_{seq_length}"
-        
         # save the sparse matrix to a npz file with sequence length information in the filename
         save_npz(filename, sparse_matrix)
+
+    def save_txt(self, filename):
+        """Save the DNASequenceCollection object as a text file"""
+        with open(filename, 'w') as f:
+            for seq in self.sequences:
+                f.write(seq.seq + '\n')
+
+    def save_zarr(self, filename):
+        """Save the one-hot encoding of a DNASequenceCollection object as a zarr file. Don't use sparse matrix, use compression"""
+        # create a list to store the one-hot encoding
+        one_hot = []
+        
+        # loop over the sequences and create a one-hot encoding for each sequence
+        for seq in tqdm(self.sequences):
+            # create the one-hot encoding
+            one_hot.append(seq.one_hot)
+        
+        # concatenate the one-hot encoding vertically
+        one_hot = np.stack(one_hot).astype(np.int8)
+        
+        # save the one-hot encoding to a zarr file
+        zarr.save(filename, one_hot, chunks=(100, 2000, 4))
