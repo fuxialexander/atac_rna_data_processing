@@ -279,13 +279,15 @@ class GenomicRegionCollection(PyRanges):
     def __setattr__(self, column_name, column):
         return super().__setattr__(column_name, column)
 
-    def collect_sequence(self, mutations=None, upstream=0, downstream=0):
+    def collect_sequence(self, mutations=None, upstream=0, downstream=0, target_length=None):
         """
         Collect the sequence of the genomic regions
         """
         if mutations is None:
             return DNASequenceCollection([
-                region.get_flanking_region(upstream, downstream).sequence
+                region.get_flanking_region(upstream, downstream).sequence 
+                if target_length is None 
+                else region.get_flanking_region(upstream, downstream).sequence.padding(target_length=target_length)
                 for region in iter(self)
             ])
         else:
