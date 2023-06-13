@@ -8,6 +8,7 @@ import yaml
 import zarr
 from atac_rna_data_processing.io.gencode import Gencode
 from atac_rna_data_processing.io.region import *
+import numcodecs
 
 def read_bed4(bedfile, filtered=True):
     """
@@ -30,6 +31,7 @@ The self parameter is a reference to the current instance of the class, and is u
         self.sample = sample
         self.assembly = assembly
         self.version = version
+        self.target_length = target_length
 
         if path.exists(self.sample + ".atac.motif.output.feather"):
             return self.load_from_feather(self.sample + ".atac.motif.output.feather", tf_list)
@@ -253,29 +255,44 @@ The self parameter is a reference to the current instance of the class, and is u
         if hasattr(self, 'sequence'):
             self.sequence.save_npz(self.sample + f".seq.npz")
 
-
+    
     def export_data_to_zarr(self): 
-        """Exports the data to a zarr directory with groups."""
-        metadata = {'sample': self.sample, 'assembly': self.assembly}
-        
-        if hasattr(self, 'peak_motif_feather'): 
+        """Exports the data to a zarr directory with arrays."""
+        metadata = {'sample': self.sample,
+                    'assembly': self.assembly}
+
+        if hasattr(self, 'peak_motif_feather'):
             metadata['peak_motif_feather'] = self.peak_motif_feather
-            
-        # save metadata to YAML file named self.sample + ".yaml" 
-        with open(self.sample + ".yml", 'w') as outfile: 
+
+        with open(self.sample + ".yml", 'w') as outfile:
             yaml.dump(metadata, outfile, default_flow_style=False)
-            
+
+        # Open a zarr store
+        root = zarr.open(self.sample + '.zarr', mode='w')
+
         if hasattr(self, 'motif_data'):
-            zarr_group = zarr.group(self.sample + '.zarr', overwrite=True)  # create zarr group
-            zarr_group.create_dataset('motif_data', data=self.motif_data) # add dataset to group
+            # assuming motif_data is a DataFrame with object type columns
+            object_codec = numcodecs.VLenUTF8()
+            root.create_dataset('motif_data/csv', data=self.motif_data.iloc[:, 0:3].values.astype('str'), object_codec=object_codec,overwrite=True)
+            root['csv'] = self.motif_data.columns[0:3].values.astype('str')
             
+            tmp_motif_data = self.motif_data.copy().iloc[:, 4:]
+            # move Accessibility to the last column
+            tmp_motif_data['Accessibility'] = self.motif_data.Accessibility
+            root.create_dataset('motif_data/watac', data=tmp_motif_data.values)
+            
+            tmp_motif_data = self.motif_data.copy()
+            tmp_motif_data['Accessibility'] = 1
+            root.create_dataset('motif_data/natac', data=tmp_motif_data.iloc[:, 4:].values)
+
         if hasattr(self, 'tf_atac'):
-            zarr_group = zarr.group(self.sample + '_tf_atac.zarr', overwrite=True)
-            zarr_group.create_dataset('tf_atac', data=self.tf_atac.values) 
-        
-        # if hasattr(self, 'sequence'):
-        #     self.sequence.save_sequence(self.sample, save_as='zarr_group')  # call save_sequence() method to export 
-        #                                                 # sequence to zarr, creating a group
+            root.create_dataset('tf_atac', data=self.tf_atac.values)
+
+        # chunks = (100, self.target_length, 4)
+        if hasattr(self, 'sequence'):
+            root.create_dataset('sequence', data=self.sequence.values, chunks=(100, self.target_length, 4))
+            
+
 class ATACWithSequence(object):
     """Read an ATAC peak bed file and collect and save the sequence of the peaks."""
     def __init__(self, sample, genome, slop=100, target_length=2000, save_as='npz') -> None:
