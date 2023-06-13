@@ -252,6 +252,28 @@ The self parameter is a reference to the current instance of the class, and is u
             self.sequence.save_npz(self.sample + f".seq.slop_{self.seq_slop}.npz")
 
 
+    def export_data_tommy(self): 
+        """Exports the data to a zarr directory with groups."""
+        metadata = {'sample': self.sample, 'assembly': self.assembly}
+        
+        if hasattr(self, 'peak_motif_feather'): 
+            metadata['peak_motif_feather'] = self.peak_motif_feather
+            
+        # save metadata to YAML file named self.sample + ".yaml" 
+        with open(self.sample + ".yml", 'w') as outfile: 
+            yaml.dump(metadata, outfile, default_flow_style=False)
+            
+        if hasattr(self, 'motif_data'):
+            zarr_group = zarr.group(self.sample + '.zarr')  # create zarr group
+            zarr_group.create_dataset('motif_data', data=self.motif_data) # add dataset to group
+            
+        if hasattr(self, 'tf_atac'):
+            zarr_group = zarr.group(self.sample + '_tf_atac.zarr')
+            zarr_group.create_dataset('tf_atac', data=self.tf_atac) 
+        
+        if hasattr(self, 'sequence'):
+            self.save_sequence(self.sample, save_as='zarr_group')  # call save_sequence() method to export 
+                                                        # sequence to zarr, creating a group
 class ATACWithSequence(object):
     """Read an ATAC peak bed file and collect and save the sequence of the peaks."""
     def __init__(self, sample, genome, slop=100, target_length=2000, save_as='npz') -> None:
@@ -272,4 +294,3 @@ class ATACWithSequence(object):
         elif save_as == 'zarr':
             # save the sequence to a zarr file
             self.sequence.save_zarr(sample + f".seq.zarr.zip")
-
