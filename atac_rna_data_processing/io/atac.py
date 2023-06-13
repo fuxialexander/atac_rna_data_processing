@@ -5,7 +5,7 @@ from pyranges import read_bed
 from pyranges import PyRanges as pr
 from scipy.sparse import csr_matrix, save_npz
 import yaml
-
+import zarr
 from atac_rna_data_processing.io.gencode import Gencode
 from atac_rna_data_processing.io.region import *
 
@@ -25,7 +25,7 @@ class ATAC(object):
 The self parameter is a reference to the current instance of the class, and is used to access variables that belongs to the class.
     """
 
-    def __init__(self, sample, assembly, version=40, scanned_motif=False, union_motif=False,  tf_list=None):
+    def __init__(self, sample, assembly, version=40, scanned_motif=False, union_motif=False,  tf_list=None, slop=100, target_length=2000):
         super(ATAC, self).__init__()
         self.sample = sample
         self.assembly = assembly
@@ -55,6 +55,8 @@ The self parameter is a reference to the current instance of the class, and is u
                 self.motif_data.columns[3:])}
             if not path.exists(self.sample + ".csv"):
                 self.export_data()
+        self.sequence = self.get_sequence(slop=slop, target_length=target_length)
+
         return
 #Returns a string as a representation of the object.
     def __repr__(self) -> str:
@@ -207,15 +209,15 @@ The self parameter is a reference to the current instance of the class, and is u
         else:
             tf_list = pd.read_csv(tf_list, header=0).gene_name.values
             tf_atac = self.promoter_atac.query("gene_name in @tf_list")
-            return tf_atac.groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
+            return tf_atac.groupby('gene_name').Accessibility.mean().reindex(tf_list, fill_value=0)
 
-    def get_sequence(self, slop=100):
+    def get_sequence(self, slop=100, target_length=2000):
         """Get the sequence of the peaks, extended by slop bp on each side."""
         # load genome sequence of assembly
         genome = Genome(assembly=self.assembly, fasta_file=f'{self.assembly}.fa')
         # get the sequence of the peaks
-        bed = GenomicRegionCollection(genome, self.peak_bed)
-        seq = bed.collect_sequence(upstream=slop, downstream=slop)
+        bed = GenomicRegionCollection(genome, self.peak_bed.df)
+        seq = bed.collect_sequence(upstream=slop, downstream=slop, target_length=target_length)
         return seq
 
     def export_data(self):
@@ -245,14 +247,14 @@ The self parameter is a reference to the current instance of the class, and is u
             save_npz(self.sample + ".natac.npz",
                     csr_matrix(tmp_motif_data.iloc[:, 4:].values))
 
-        if self.tf_atac is not None:
+        if hasattr(self, 'tf_atac'):
             np.save(self.sample + ".tf_atac.npy", self.tf_atac.values)
         
-        if self.sequence is not None:
-            self.sequence.save_npz(self.sample + f".seq.slop_{self.seq_slop}.npz")
+        if hasattr(self, 'sequence'):
+            self.sequence.save_npz(self.sample + f".seq.npz")
 
 
-    def export_data_tommy(self): 
+    def export_data_to_zarr(self): 
         """Exports the data to a zarr directory with groups."""
         metadata = {'sample': self.sample, 'assembly': self.assembly}
         
@@ -264,16 +266,16 @@ The self parameter is a reference to the current instance of the class, and is u
             yaml.dump(metadata, outfile, default_flow_style=False)
             
         if hasattr(self, 'motif_data'):
-            zarr_group = zarr.group(self.sample + '.zarr')  # create zarr group
+            zarr_group = zarr.group(self.sample + '.zarr', overwrite=True)  # create zarr group
             zarr_group.create_dataset('motif_data', data=self.motif_data) # add dataset to group
             
         if hasattr(self, 'tf_atac'):
-            zarr_group = zarr.group(self.sample + '_tf_atac.zarr')
-            zarr_group.create_dataset('tf_atac', data=self.tf_atac) 
+            zarr_group = zarr.group(self.sample + '_tf_atac.zarr', overwrite=True)
+            zarr_group.create_dataset('tf_atac', data=self.tf_atac.values) 
         
-        if hasattr(self, 'sequence'):
-            self.save_sequence(self.sample, save_as='zarr_group')  # call save_sequence() method to export 
-                                                        # sequence to zarr, creating a group
+        # if hasattr(self, 'sequence'):
+        #     self.sequence.save_sequence(self.sample, save_as='zarr_group')  # call save_sequence() method to export 
+        #                                                 # sequence to zarr, creating a group
 class ATACWithSequence(object):
     """Read an ATAC peak bed file and collect and save the sequence of the peaks."""
     def __init__(self, sample, genome, slop=100, target_length=2000, save_as='npz') -> None:

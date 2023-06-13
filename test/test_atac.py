@@ -13,7 +13,8 @@ atac = ATAC('test', 'hg38', tf_list="../human/tf_list.txt")
 atac.export_data()
 
 # %%
-from scipy.sparse import load_npz
-x= load_npz("./test.natac.npz")
-# %%
+atac.export_data_to_zarr()
 
+# %%
+atac.peak_motif_feather
+# %%

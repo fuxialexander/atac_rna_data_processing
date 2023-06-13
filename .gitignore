@@ -36,3 +36,7 @@ scripts/atac_rna_data_processing.code-workspace
 human/tn5bias
 motif_annotations.csv
 *.zarr
+*.gz
+*.fasta
+*.fa
+*.bb

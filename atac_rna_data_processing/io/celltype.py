@@ -131,7 +131,7 @@ class Celltype:
         if start is None:
             start = peak_id - focus
             end = peak_id + focus
-        return self.input_all[start:end].toarray().reshape(-1, self.num_region_per_sample, self.num_features)
+        return self.input_all[start:end].toarray().reshape(-1, self.num_features)
 
     def get_tss_jacobian(self, jacob: np.ndarray, tss: TSS, multiply_input=True):
         """Get the jacobian of a TSS."""

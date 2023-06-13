@@ -201,3 +201,19 @@ class DNASequenceCollection():
         
         # save the one-hot encoding to a zarr file
         zarr.save(filename, one_hot, chunks=(100, 2000, 4))
+    
+    def save_zarr_group(self, filename):
+        """Save the one-hot encoding of a DNASequenceCollection object as a zarr file. Don't use sparse matrix, use compression"""
+        # create a list to store the one-hot encoding
+        one_hot = []
+        
+        # loop over the sequences and create a one-hot encoding for each sequence
+        for seq in tqdm(self.sequences):
+            # create the one-hot encoding
+            one_hot.append(seq.one_hot)
+        
+        # concatenate the one-hot encoding vertically
+        one_hot = np.stack(one_hot).astype(np.int8)
+        
+        # save the one-hot encoding to a zarr file
+        zarr.save(filename, one_hot, chunks=(100, 2000, 4))
