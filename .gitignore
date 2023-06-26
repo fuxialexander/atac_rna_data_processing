@@ -40,3 +40,5 @@ motif_annotations.csv
 *.fasta
 *.fa
 *.bb
+atac_rna_data_processing/dummy_model.pth
+test/k562_cut0.05.atac.bed
