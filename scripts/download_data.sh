@@ -15,7 +15,7 @@ URLs=(
 )
 
 # Make the test directory if it doesn't exist
-mkdir -p data
+mkdir -p test
 
 for URL in "${URLs[@]}"; do
     # Get just the filename from the URL 
@@ -23,10 +23,10 @@ for URL in "${URLs[@]}"; do
     echo "Downloading $URL as $FILE..."
 
     # Use curl to download the file into the test folder 
-    curl -L $URL -o data/$FILE  
+    curl -L $URL -o test/$FILE  
 
     # Check that the file exists in the test folder and is not empty 
-    if [ ! -s data/$FILE ] ; then 
+    if [ ! -s test/$FILE ] ; then 
         echo "Error: Failed to download $URL" 
         exit 1 
     fi 
