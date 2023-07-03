@@ -42,3 +42,6 @@ motif_annotations.csv
 *.bb
 atac_rna_data_processing/dummy_model.pth
 test/k562_cut0.05.atac.bed
+human
+human/check_pretrain.py
+check_pretrain.py
