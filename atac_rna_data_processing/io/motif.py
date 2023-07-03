@@ -80,7 +80,7 @@ class Motif(object):
 
     def plot_logo(self, filename=None):
         """plot seqlogo of motif using pfm file"""
-        return seqlogo.seqlogo(self.pfm, filename = filename,format='png', size='small', ic_scale=True, ic_ref=0.2, ylabel='', show_xaxis=False, show_yaxis=False, show_ends=False, rotate_numbers=False, color_scheme='classic', logo_title=self.cluster_name, fineprint='')
+        return seqlogo.seqlogo(self.pfm, filename = filename,format='png', size='large', ic_scale=True, ic_ref=0.2, ylabel='', show_xaxis=False, show_yaxis=False, show_ends=False, rotate_numbers=False, color_scheme='classic', logo_title=self.cluster_name, fineprint='')
 
 
 class MotifCluster(object):

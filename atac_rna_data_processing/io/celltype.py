@@ -1,16 +1,22 @@
 import os
+
+import captum.attr as attr
 import numpy as np
 import pandas as pd
 import pkg_resources
+import pyranges as prs
 import seaborn as sns
-from atac_rna_data_processing.config.load_config import *
-from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
-from atac_rna_data_processing.io.motif import MotifClusterCollection
-from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
+import torch
 from matplotlib.patches import Rectangle
 from scipy.linalg import norm
 from scipy.sparse import csr_matrix, load_npz
 from scipy.stats import pearsonr, spearmanr
+from tqdm import tqdm
+
+from atac_rna_data_processing.config.load_config import *
+from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
+from atac_rna_data_processing.io.motif import MotifClusterCollection
+from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 
 motif = NrMotifV1.load_from_pickle(pkg_resources.resource_filename('atac_rna_data_processing', 'data/NrMotifV1.pkl'))
 # cannot find ../data/NrMotifV1.pkl, fix it using 
@@ -143,9 +149,28 @@ class Celltype:
         tss_jacob = OneTSSJacobian(jacob, tss, region, self.features, self.num_cls)
         return tss_jacob
 
-    def summarize_gene_jacobian(self, jacob: np.ndarray):
+    def gene_jacobian_summary(self, gene, axis='motif', multiply_input=True):
         """Summarize the jacobian of a gene."""
-        return np.sum(jacob, axis=0)
+        gene_jacobs = self.get_gene_jacobian(gene, multiply_input)
+        if axis == 'motif':
+            return pd.concat([jac.summarize(axis) for jac in gene_jacobs], axis=1).sum(axis=1)
+        elif axis == 'region':
+            # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
+            return pd.concat([j.summarize(axis='region') for j in gene_jacobs]).groupby(['index', 'Chromosome', 'Start']).Score.sum().reset_index()
+
+    @property
+    def gene_by_motif(self):
+        """Get the jacobian of all genes by motif."""
+        if os.path.exists(f"{self.interpret_dir}/gene_by_motif.feather"):
+            return pd.read_feather(f"{self.interpret_dir}/gene_by_motif.feather").set_index('index')
+        else:
+            jacobs = []
+            for g in tqdm(self.gene_annot.gene_name.unique()):
+                for j in self.get_gene_jacobian(g):
+                    jacobs.append(j.motif_summary().T)
+            jacobs_df = pd.concat(jacobs, axis=1).T
+            jacobs_df.reset_index().to_feather(f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather")
+            return jacobs_df
 
     def get_gene_pred(self, gene_name: str):
         """Get the prediction of a gene."""
@@ -195,7 +220,7 @@ class GETCellType(Celltype):
         num_cls=config.celltype.num_cls
         super().__init__(features, num_region_per_sample, celltype, data_dir, interpret_dir, input, jacob, num_cls)
 
-    
+
 
 class OneTSSJacobian():
     """Jacobian data for one TSS."""
@@ -260,7 +285,13 @@ class OneTSSJacobian():
         data = self.data.iloc[:,0:3]
         data['Score'] = region_data
         return data
-        
+    
+    def summarize(self, axis='motif', stats='mean'):
+        """Summarize the data."""
+        if axis == 'motif':
+            return self.motif_summary(stats)
+        elif axis == 'region':
+            return self.region_summary(stats)
 
     def get_pairs_with_l2_cutoff(self, cutoff: float):
         """Get the pairs with L2 Norm cutoff."""
@@ -288,3 +319,22 @@ class OneTSSJacobian():
         df = df[['Chromosome', 'Start', 'End', 'Gene',
                  'Strand', 'TSS', 'Motif', 'Score']]
         return df
+
+class GeneByMotif(object):
+    """Gene by motif jacobian data."""
+    def __init__(self, annot, jacob) -> None:
+        self.data = jacob
+        self.annot = annot
+
+    @property
+    def motif_corr(self, method='spearman', diagal_to_zero=True):
+        """Get the motif correlation."""
+        corr = self.data.corr(method=method)
+        if diagal_to_zero:
+            corr = self.set_diagnal_to_zero(corr)
+        return corr
+
+    def set_diagnal_to_zero(self, df: pd.DataFrame):
+        for i in range(df.shape[0]):
+            df.iloc[i,i] = 0
+        return df 
