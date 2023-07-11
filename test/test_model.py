@@ -8,8 +8,21 @@ import zarr
 import torch
 import time
 import torch.nn as nn
+import logging
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+import wandb
+from scipy.stats import pearsonr
+from sklearn.metrics import r2_score
+
+
+# %% Initialize a new run
+wandb.init(project="my-project", name="run-name")
+config = wandb.config
+config.batch_size = 4
+config.epochs = 5
+config.learning_rate = 0.001
+
 # %%
 df = read_bed("./k562_cut0.05.atac.bed")
 df = df.df.rename(columns={"Name":"Score"})
@@ -56,7 +69,7 @@ print('Instance:', instance)
 print('Target:', target)
 print(f'Length of dataset: {len(dataset)}')
 
-# %% ConvBlock method
+# %% ConVBLock method 2
 class ConvBlock(nn.Module):
     def __init__(self, size, stride = 2, hidden_in = 64, hidden = 64):
         super(ConvBlock, self).__init__()
@@ -74,22 +87,41 @@ class ConvBlock(nn.Module):
                         nn.BatchNorm1d(hidden),
                         )
         self.relu = nn.ReLU()
-        # Add a fully connected layer at the end
-        self.fc = nn.Linear(4000, 1)
 
     def forward(self, x):
         scaled = self.scale(x)
         identity = scaled
         res_out = self.res(scaled)
         out = self.relu(res_out + identity)
-        x = x.reshape(x.size(0), -1) # Flatten the tensor
-        # apply the fully connected layer at the end
-        x = self.fc(x)
-        return x
+        return out
 
 # Define device
 device = torch.device('cuda')
 
+# Define model
+class MyModel(nn.Module):
+    def __init__(self):
+        super(MyModel, self).__init__()
+        self.block1 = ConvBlock(size=15, stride=2, hidden_in=4, hidden=32)
+        self.maxpool1 = nn.MaxPool1d(2)
+        self.block2 = ConvBlock(size=3, stride=2, hidden_in=32, hidden=64)
+        self.maxpool2 = nn.MaxPool1d(2)
+        self.block3 = ConvBlock(size=3, stride=2, hidden_in=64, hidden=128)
+        self.maxpool3 = nn.MaxPool1d(2)
+        
+        self.fc = nn.Linear(1920, 1)
+
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.maxpool1(x)
+        x = self.block2(x)
+        x = self.maxpool2(x)
+        x = self.block3(x)
+        x = self.maxpool3(x)
+        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = self.fc(x)
+        return x
+    
 # %% Split into train and validation sets
 # Compute the index where to split the data
 split_idx = int(len(data['arr_0']) * 0.8)  # 80% for training
@@ -106,14 +138,46 @@ val_data.array('arr_0', data['arr_0'][split_idx:])
 target_values_train = target_values[:split_idx]
 target_values_val = target_values[split_idx:]
 
-# Create data loaders
-train_loader = DataLoader(ZarrDataset('train.zarr', target_values_train), batch_size=4, shuffle=True, num_workers=10)
-val_loader = DataLoader(ZarrDataset('val.zarr', target_values_val), batch_size=4, shuffle=True, num_workers=10)
+# %% Change batch size to 32
+batch_size = 64
+train_loader = DataLoader(ZarrDataset('train.zarr', target_values_train), batch_size=batch_size, shuffle=True, num_workers=10)
+val_loader = DataLoader(ZarrDataset('val.zarr', target_values_val), batch_size=batch_size, shuffle=True, num_workers=10)
 
 # %% Define loss function and optimizer
-model = ConvBlock(size=3, stride=2, hidden_in=4, hidden=32).cuda()  # Update the model
-criterion = nn.MSELoss().cuda() 
+# model = ConvBlock(size=3, stride=2, hidden_in=4, hidden=32).cuda()  # Update the model
+model = MyModel().cuda()
+criterion = nn.PoissonNLLLoss().cuda() 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+# %% Set up the logger
+logging.basicConfig(filename='training.log', level=logging.INFO, format='%(asctime)s %(message)s')
+
+# %% Evaluate log loss
+def evaluate(model, criterion, data_loader):
+    model.eval()  # set the model to evaluation mode
+    total_loss = 0
+    all_outputs = []
+    all_labels = []
+    with torch.no_grad():  # deactivate autograd engine to reduce memory usage and speed up computations
+        for batch in data_loader:
+            seq, labels = batch
+            seq = seq.transpose(1,2).float().cuda()
+            labels = labels.float().cuda()
+            outputs = model(seq)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
+            all_outputs.extend(outputs.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    # convert lists to numpy arrays
+    all_outputs = np.array(all_outputs)
+    all_labels = np.array(all_labels)
+
+    # calculate additional metrics
+    pearson_corr, _ = pearsonr(all_outputs.flatten(), all_labels.flatten())
+    r2 = r2_score(all_labels, all_outputs)
+
+    return total_loss / len(data_loader), pearson_corr, r2
 
 # %% Train model
 for epoch in range(5):  # Number of epochs
@@ -140,6 +204,17 @@ for epoch in range(5):  # Number of epochs
         
         # Update progress bar
         progress_bar.set_description(f"Epoch {epoch+1} Loss: {loss.item():.4f}")
+        # Log the training loss for each batch
+        wandb.log({"Batch Training Loss": loss.item()})
+
+    # Call evaluate at the end of each epoch
+    val_loss, pearson_corr, r2 = evaluate(model, criterion, val_loader)
+    # Calculate the average training loss for this epoch
+    avg_train_loss = train_loss / len(train_loader)
+    # Log the losses, additional metrics and the current epoch to wandb
+    wandb.log({"Epoch": epoch, "Average Training Loss": avg_train_loss, "Validation Loss": val_loss, 
+           "Pearson Correlation": pearson_corr, "R-squared": r2})         
+
 
     # End timer
     end_time = time.time()
@@ -151,5 +226,3 @@ for epoch in range(5):  # Number of epochs
 # Close the progress bar after the loop ends
 progress_bar.close()
 
-
-# %%
