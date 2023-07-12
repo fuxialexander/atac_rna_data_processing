@@ -19,9 +19,9 @@ from sklearn.metrics import r2_score
 # %% Initialize a new run
 wandb.init(project="my-project", name="run-name")
 config = wandb.config
-config.batch_size = 4
+config.batch_size = 16
 config.epochs = 5
-config.learning_rate = 0.001
+config.learning_rate = 0.0001
 
 # %%
 df = read_bed("./k562_cut0.05.atac.bed")
@@ -49,14 +49,14 @@ target_values = bed_df[3].values
 class ZarrDataset(Dataset):
 
     def __init__(self, file_path, target_values):
-        self.data = zarr.open(file_path, mode='r')['arr_0']
+        self.data = torch.from_numpy(np.array(zarr.open(file_path, mode='r')['arr_0']))
         self.target_values = target_values
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        instance = torch.from_numpy(self.data[idx])
+        instance = self.data[idx]
         target = self.target_values[idx]  # Get corresponding target value
         return instance, target
 
@@ -70,6 +70,22 @@ print('Target:', target)
 print(f'Length of dataset: {len(dataset)}')
 
 # %% ConVBLock method 2
+class FirstConvBlock(nn.Module):
+    def __init__(self, size, stride = 2, hidden_in = 64, hidden = 64):
+        super(FirstConvBlock, self).__init__()
+        pad_len = int(size / 2)
+        self.scale = nn.Sequential(
+                        nn.Conv1d(hidden_in, hidden, size, stride, pad_len, dilation=2),
+                        nn.BatchNorm1d(hidden),
+                        nn.ReLU(),
+                        )
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        scaled = self.scale(x)
+        out = self.relu(scaled)
+        return out
+
 class ConvBlock(nn.Module):
     def __init__(self, size, stride = 2, hidden_in = 64, hidden = 64):
         super(ConvBlock, self).__init__()
@@ -102,14 +118,14 @@ device = torch.device('cuda')
 class MyModel(nn.Module):
     def __init__(self):
         super(MyModel, self).__init__()
-        self.block1 = ConvBlock(size=15, stride=2, hidden_in=4, hidden=32)
-        self.maxpool1 = nn.MaxPool1d(2)
-        self.block2 = ConvBlock(size=3, stride=2, hidden_in=32, hidden=64)
-        self.maxpool2 = nn.MaxPool1d(2)
-        self.block3 = ConvBlock(size=3, stride=2, hidden_in=64, hidden=128)
-        self.maxpool3 = nn.MaxPool1d(2)
+        self.block1 = FirstConvBlock(size=20, stride=1, hidden_in=4, hidden=128)
+        self.maxpool1 = nn.AvgPool1d(20)
+        self.block2 = ConvBlock(size=3, stride=2, hidden_in=128, hidden=128)
+        self.maxpool2 = nn.AvgPool1d(2)
+        self.block3 = ConvBlock(size=3, stride=2, hidden_in=128, hidden=128)
+        self.maxpool3 = nn.AvgPool1d(2)
         
-        self.fc = nn.Linear(1920, 1)
+        self.fc = nn.Linear(128, 1)
 
     def forward(self, x):
         x = self.block1(x)
@@ -118,9 +134,10 @@ class MyModel(nn.Module):
         x = self.maxpool2(x)
         x = self.block3(x)
         x = self.maxpool3(x)
-        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = x.sum(dim=2)
+        # x = x.view(x.size(0), -1)  # Flatten the tensor
         x = self.fc(x)
-        return x
+        return x.squeeze()
     
 # %% Split into train and validation sets
 # Compute the index where to split the data
@@ -139,15 +156,15 @@ target_values_train = target_values[:split_idx]
 target_values_val = target_values[split_idx:]
 
 # %% Change batch size to 32
-batch_size = 64
+batch_size = 256
 train_loader = DataLoader(ZarrDataset('train.zarr', target_values_train), batch_size=batch_size, shuffle=True, num_workers=10)
 val_loader = DataLoader(ZarrDataset('val.zarr', target_values_val), batch_size=batch_size, shuffle=True, num_workers=10)
 
 # %% Define loss function and optimizer
 # model = ConvBlock(size=3, stride=2, hidden_in=4, hidden=32).cuda()  # Update the model
 model = MyModel().cuda()
-criterion = nn.PoissonNLLLoss().cuda() 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.MSELoss().cuda() 
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
 # %% Set up the logger
 logging.basicConfig(filename='training.log', level=logging.INFO, format='%(asctime)s %(message)s')
@@ -180,7 +197,7 @@ def evaluate(model, criterion, data_loader):
     return total_loss / len(data_loader), pearson_corr, r2
 
 # %% Train model
-for epoch in range(5):  # Number of epochs
+for epoch in range(100):  # Number of epochs
     model.train()
     
     # Start timer
@@ -207,14 +224,21 @@ for epoch in range(5):  # Number of epochs
         # Log the training loss for each batch
         wandb.log({"Batch Training Loss": loss.item()})
 
-    # Call evaluate at the end of each epoch
-    val_loss, pearson_corr, r2 = evaluate(model, criterion, val_loader)
+    # Call evaluate at the end of each epoch for both training and validation sets
+    train_loss, train_pearson_corr, train_r2 = evaluate(model, criterion, train_loader)
+    val_loss, val_pearson_corr, val_r2 = evaluate(model, criterion, val_loader)
     # Calculate the average training loss for this epoch
     avg_train_loss = train_loss / len(train_loader)
     # Log the losses, additional metrics and the current epoch to wandb
-    wandb.log({"Epoch": epoch, "Average Training Loss": avg_train_loss, "Validation Loss": val_loss, 
-           "Pearson Correlation": pearson_corr, "R-squared": r2})         
-
+    wandb.log({
+        "Epoch": epoch, 
+        "Average Training Loss": avg_train_loss, 
+        "Training Pearson Correlation": train_pearson_corr, 
+        "Training R-squared": train_r2,
+        "Validation Loss": val_loss, 
+        "Validation Pearson Correlation": val_pearson_corr, 
+        "Validation R-squared": val_r2
+    }) 
 
     # End timer
     end_time = time.time()
@@ -226,3 +250,5 @@ for epoch in range(5):  # Number of epochs
 # Close the progress bar after the loop ends
 progress_bar.close()
 
+
+# %%
