@@ -14,10 +14,13 @@ from torch.utils.data import Dataset
 import wandb
 from scipy.stats import pearsonr
 from sklearn.metrics import r2_score
+from sklearn.model_selection import train_test_split
 
 
 # %% Initialize a new run
-wandb.init(project="my-project", name="run-name")
+# generate a new run name
+run_name = wandb.util.generate_id()
+wandb.init(project="my-project", name=run_name)
 config = wandb.config
 config.batch_size = 16
 config.epochs = 5
@@ -48,9 +51,13 @@ target_values = bed_df[3].values
 # %% Get the first instance
 class ZarrDataset(Dataset):
 
-    def __init__(self, file_path, target_values):
+    # def __init__(self, file_path, target_values):
+    #     self.data = torch.from_numpy(np.array(zarr.open(file_path, mode='r')['arr_0']))
+    #     self.target_values = target_values
+
+    def __init__(self, file_path, target_file_path):
         self.data = torch.from_numpy(np.array(zarr.open(file_path, mode='r')['arr_0']))
-        self.target_values = target_values
+        self.target_values = torch.from_numpy(np.array(zarr.open(target_file_path, mode='r')['arr_0']))
 
     def __len__(self):
         return len(self.data)
@@ -59,15 +66,6 @@ class ZarrDataset(Dataset):
         instance = self.data[idx]
         target = self.target_values[idx]  # Get corresponding target value
         return instance, target
-
-# %% Assuming target_values is a list or array containing your target values
-dataset = ZarrDataset('test.zarr', target_values)
-
-# %% Debugging
-instance, target = dataset[0]
-print('Instance:', instance)
-print('Target:', target)
-print(f'Length of dataset: {len(dataset)}')
 
 # %% ConVBLock method 2
 class FirstConvBlock(nn.Module):
@@ -120,8 +118,12 @@ class MyModel(nn.Module):
         super(MyModel, self).__init__()
         self.block1 = FirstConvBlock(size=20, stride=1, hidden_in=4, hidden=128)
         self.maxpool1 = nn.AvgPool1d(20)
+        self.dropout1 = nn.Dropout(0.5)  # 50% dropout
+
         self.block2 = ConvBlock(size=3, stride=2, hidden_in=128, hidden=128)
         self.maxpool2 = nn.AvgPool1d(2)
+        self.dropout2 = nn.Dropout(0.5)  # 50% dropout
+
         self.block3 = ConvBlock(size=3, stride=2, hidden_in=128, hidden=128)
         self.maxpool3 = nn.AvgPool1d(2)
         
@@ -139,32 +141,71 @@ class MyModel(nn.Module):
         x = self.fc(x)
         return x.squeeze()
     
-# %% Split into train and validation sets
-# Compute the index where to split the data
-split_idx = int(len(data['arr_0']) * 0.8)  # 80% for training
+# Split into train and validation sets
+X_train, X_val, y_train, y_val = train_test_split(data['arr_0'], target_values, test_size=0.2, random_state=42)
+
+# Save the training data
+train_data = zarr.open('train.zarr', mode='w')
+train_data.array('arr_0', X_train)
+
+# Save the training target values
+train_target_values = zarr.open('train_target_values.zarr', mode='w')
+train_target_values.array('arr_0', y_train)
+
+# Save the validation data
+val_data = zarr.open('val.zarr', mode='w')
+val_data.array('arr_0', X_val)
+
+# Save the validation target values
+val_target_values = zarr.open('val_target_values.zarr', mode='w')
+val_target_values.array('arr_0', y_val)
+
+# Then proceed to create your dataloaders
+train_loader = DataLoader(ZarrDataset('train.zarr', 'train_target_values.zarr'), batch_size=config.batch_size, shuffle=True, num_workers=10)
+val_loader = DataLoader(ZarrDataset('val.zarr', 'val_target_values.zarr'), batch_size=config.batch_size, shuffle=False, num_workers=10)
 
 # Create the training data
-train_data = zarr.open('train.zarr', mode='w')
-train_data.array('arr_0', data['arr_0'][:split_idx])
+# train_data = zarr.open('train.zarr', mode='w')
+# train_data.array('arr_0', data['arr_0'][:split_idx])
 
-# Create the validation data
-val_data = zarr.open('val.zarr', mode='w')
-val_data.array('arr_0', data['arr_0'][split_idx:])
+# # Create the validation data
+# val_data = zarr.open('val.zarr', mode='w')
 
-# Split the target values into training and validation sets
-target_values_train = target_values[:split_idx]
-target_values_val = target_values[split_idx:]
+# val_data.array('arr_0', data['arr_0'][split_idx:])
 
-# %% Change batch size to 32
-batch_size = 256
-train_loader = DataLoader(ZarrDataset('train.zarr', target_values_train), batch_size=batch_size, shuffle=True, num_workers=10)
-val_loader = DataLoader(ZarrDataset('val.zarr', target_values_val), batch_size=batch_size, shuffle=True, num_workers=10)
+# # Split the target values into training and validation sets
+# target_values_train = target_values[:split_idx]
+# target_values_val = target_values[split_idx:]
+
+# # %% Change batch size to 256
+# batch_size = 256
+# train_loader = DataLoader(ZarrDataset('train.zarr', target_values_train), batch_size=batch_size, shuffle=True, num_workers=10)
+# val_loader = DataLoader(ZarrDataset('val.zarr', target_values_val), batch_size=batch_size, shuffle=True, num_workers=10)
 
 # %% Define loss function and optimizer
 # model = ConvBlock(size=3, stride=2, hidden_in=4, hidden=32).cuda()  # Update the model
 model = MyModel().cuda()
 criterion = nn.MSELoss().cuda() 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.0001)
+
+# Specify the path to your checkpoint
+checkpoint_path = 'checkpoint_path.pth'
+
+if os.path.isfile(checkpoint_path):
+    # Load the checkpoint
+    checkpoint = torch.load(checkpoint_path)
+
+    # Restore the state of model and optimizer
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+
+    print(f"Loaded checkpoint '{checkpoint_path}' (epoch {checkpoint['epoch']})")
+
+else:
+    print("No checkpoint found at specified path, training from scratch.")
+    start_epoch = 0
 
 # %% Set up the logger
 logging.basicConfig(filename='training.log', level=logging.INFO, format='%(asctime)s %(message)s')
@@ -243,12 +284,18 @@ for epoch in range(100):  # Number of epochs
     # End timer
     end_time = time.time()
 
+    # Save a checkpoint after each epoch
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+    }, f'checkpoint_{epoch}.pth')
+
+
     # Compute elapsed time
     elapsed_time = end_time - start_time
     print(f"\nTime taken for epoch {epoch+1}: {elapsed_time:.2f} seconds. Average loss: {train_loss / len(train_loader)}")
 
 # Close the progress bar after the loop ends
 progress_bar.close()
-
-
-# %%
