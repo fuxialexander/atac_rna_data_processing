@@ -6,7 +6,50 @@ except:
     print("MOODS not installed. Please install MOODS to use the reverse_complement function.")
 import os 
 from .motif import *
-
+    
+def fix_gene_name(x: str):
+    if x.startswith('ZN') and not x.startswith('ZNF'):
+        x = x.replace('ZN', 'ZNF')
+    if x.startswith('ZSC') and not x.startswith('ZSCAN'):
+        x = x.replace('ZSC', 'ZSCAN')
+    if x.startswith('NF2L'):
+        x = x.replace('NF2L', 'NFE2L')
+    if x.startswith('PKNX1'):
+        x = 'PKNOX1'
+    if x.startswith('NKX') and '-' not in x:
+        x = x[:-1] + '-' + x[-1]
+    if x == 'HTF4':
+        x = 'TCF12'
+    if x.startswith('PRD') and not x.startswith('PRDM'):
+        x = x.replace('PRD', 'PRDM')
+    if x.startswith('PIT1'):
+        x = 'POU1F1'
+    if x == 'HINFP1':
+        x = 'HINFP'
+    if x.startswith('NFAC'):
+        x = x.replace('NFAC', 'NFATC')
+    if x == 'AP2A':
+        x = 'TFAP2A'
+    if x == 'AP2B':
+        x = 'TFAP2B'
+    if x == 'AP2C':
+        x = 'TFAP2C'
+    if x == 'TF7L1':
+        x = 'TCF7L1'
+    if x == 'TF7L2':
+        x = 'TCF7L2'
+    if x == 'STA5B':
+        x = 'STAT5B'
+    if x == 'STA5A':
+        x = 'STAT5A'
+    if x == 'BC11A':
+        x = 'BCL11A'
+    if x.startswith('SMCA'):
+        x = x.replace('SMCA', 'SMARCA')
+    if x.startswith('ZBT') and not x.startswith('ZBTB'):
+        x = x.replace('ZBT', 'ZBTB')
+    return x
+    
 class NrMotifV1(MotifClusterCollection):
     """TFBS motif clusters defined in https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/."""
     def __init__(self, motif_dir, base_url = 
@@ -95,7 +138,7 @@ class NrMotifV1(MotifClusterCollection):
         for c in self.get_motifcluster_list():
             for g in self.get_motif_cluster_by_name(c).get_gene_name_list():
                 if g.endswith('mouse'):
-                    pass
+                    g = g.replace('.mouse', '').upper()
                 else:
                     if c in cluster_gene_list:
                         cluster_gene_list[c].append(g.upper())
@@ -103,8 +146,11 @@ class NrMotifV1(MotifClusterCollection):
                         cluster_gene_list[c] = [g.upper()]
             if c in cluster_gene_list:
                 cluster_gene_list[c] = list(set(cluster_gene_list[c]))
+        # fix the gene names in motif_gene_list
+        for k in cluster_gene_list:
+            cluster_gene_list[k] = [fix_gene_name(x) for x in cluster_gene_list[k]]
         return cluster_gene_list
-    
+
     def get_motif_cluster_by_name(self, mc_name):
         """Get motif cluster by name."""
         mc = MotifCluster()

@@ -6,7 +6,7 @@ import pkg_resources
 import zarr
 from scipy.sparse import csr_matrix, load_npz, coo_matrix
 from tqdm import tqdm
-
+import zarr
 from atac_rna_data_processing.config.load_config import *
 from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
@@ -81,7 +81,7 @@ class Celltype:
                 # save to zarr file
                 zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
                 self.jacobs = zarr.open(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode='r')
-
+                
         self.preds = load_npz(os.path.join(
             self.interpret_cell_dir, "preds.npz"))
         self.preds = np.array([self.preds[i].toarray().reshape(self.num_region_per_sample, self.num_cls)[
