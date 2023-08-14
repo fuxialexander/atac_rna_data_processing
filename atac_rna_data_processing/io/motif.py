@@ -1,9 +1,12 @@
 import seqlogo
 import pandas as pd
 import numpy as np
-from MOODS.scan import Scanner
-from MOODS.parsers import pfm_to_log_odds
-from MOODS.tools import threshold_from_p_with_precision
+try:
+    from MOODS.scan import Scanner
+    from MOODS.parsers import pfm_to_log_odds
+    from MOODS.tools import threshold_from_p_with_precision
+except:
+    print("MOODS not installed. Please install MOODS to use the scan_motif function.")
 
 def pfm_conversion(filename, lo_bg=[2.977e-01, 2.023e-01, 2.023e-01, 2.977e-01], ps=0.01):
     mat = pfm_to_log_odds(filename, lo_bg, ps)
