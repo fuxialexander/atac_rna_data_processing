@@ -1,6 +1,9 @@
 import pickle
 import pandas as pd
-from MOODS.tools import reverse_complement
+try:
+    from MOODS.tools import reverse_complement
+except:
+    print("MOODS not installed. Please install MOODS to use the reverse_complement function.")
 import os 
 from .motif import *
 
