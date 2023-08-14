@@ -9,10 +9,10 @@ import seaborn as sns
 import torch
 from matplotlib.patches import Rectangle
 from scipy.linalg import norm
-from scipy.sparse import csr_matrix, load_npz
+from scipy.sparse import csr_matrix, load_npz, coo_matrix
 from scipy.stats import pearsonr, spearmanr
 from tqdm import tqdm
-
+import zarr
 from atac_rna_data_processing.config.load_config import *
 from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
@@ -39,7 +39,7 @@ class Celltype:
 
     def __init__(self, features: np.ndarray, num_region_per_sample: int, 
                  celltype: str, data_dir="../pretrain_human_bingren_shendure_apr2023",
-                 interpret_dir="Interpretation", input=False, jacob=False, num_cls=2):
+                 interpret_dir="Interpretation", input=False, jacob=False, embed=False, num_cls=2):
         self.celltype = celltype
         self.data_dir = data_dir
         self.interpret_dir = interpret_dir
@@ -69,9 +69,24 @@ class Celltype:
             self.tss_accessibility = self.input[:, self.num_features - 1]
         self.tss_strand = self.gene_annot.Strand.values
         self.tss_start = self.peak_annot.iloc[tss_idx].Start.values
+        if embed:
+            if os.path.exists(os.path.join(self.interpret_cell_dir, "embeds_0.npy")):
+                self.embed = np.load(os.path.join(self.interpret_cell_dir, "embeds_0.npy"))
+            else:
+                raise ValueError("embeds_0.npy not found")
+                
         if jacob:
-            self.jacobs = load_npz(os.path.join(
-                self.interpret_cell_dir, "jacobians.npz"))
+            # check if os.path.join(self.interpret_cell_dir, "jacobians.zarr") exists, if not save the matrix to zarr file
+            if os.path.exists(os.path.join(self.interpret_cell_dir, "jacobians.zarr")):
+                # load from zarr file
+                self.jacobs = zarr.open(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode='r')
+            else:
+                jacob_npz = coo_matrix(load_npz(os.path.join(self.interpret_cell_dir, "jacobians.npz")))
+                z = zarr.zeros(shape=jacob_npz.shape, chunks=(100, jacob_npz.shape[1]), dtype=jacob_npz.dtype)
+                z.set_coordinate_selection((jacob_npz.row, jacob_npz.col), jacob_npz.data)
+                # save to zarr file
+                zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
+                self.jacobs = zarr.open(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode='r')
         self.preds = load_npz(os.path.join(
             self.interpret_cell_dir, "preds.npz"))
         self.preds = np.array([self.preds[i].toarray().reshape(self.num_region_per_sample, self.num_cls)[
@@ -141,7 +156,7 @@ class Celltype:
 
     def get_tss_jacobian(self, jacob: np.ndarray, tss: TSS, multiply_input=True):
         """Get the jacobian of a TSS."""
-        jacob = jacob.toarray().reshape(-1, self.num_region_per_sample, self.num_features)
+        jacob = jacob.reshape(-1, self.num_region_per_sample, self.num_features)
         if multiply_input:
             input = self.get_input_data(peak_id=tss.peak_id, focus=self.focus)
             jacob = jacob * input
@@ -158,11 +173,10 @@ class Celltype:
             # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
             return pd.concat([j.summarize(axis='region') for j in gene_jacobs]).groupby(['index', 'Chromosome', 'Start']).Score.sum().reset_index()
 
-    @property
-    def gene_by_motif(self):
+    def get_gene_by_motif(self):
         """Get the jacobian of all genes by motif."""
-        if os.path.exists(f"{self.interpret_dir}/gene_by_motif.feather"):
-            return pd.read_feather(f"{self.interpret_dir}/gene_by_motif.feather").set_index('index')
+        if os.path.exists(f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather"):
+            self.gene_by_motif = pd.read_feather(f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather").set_index('index')
         else:
             jacobs = []
             for g in tqdm(self.gene_annot.gene_name.unique()):
@@ -170,8 +184,8 @@ class Celltype:
                     jacobs.append(j.motif_summary().T)
             jacobs_df = pd.concat(jacobs, axis=1).T
             jacobs_df.reset_index().to_feather(f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather")
-            return jacobs_df
-
+            self.gene_by_motif = jacobs_df
+        return
     def get_gene_pred(self, gene_name: str):
         """Get the prediction of a gene."""
         return self.preds[self.get_gene_idx(gene_name)]
@@ -217,8 +231,9 @@ class GETCellType(Celltype):
         interpret_dir=config.celltype.interpret_dir
         input=config.celltype.input
         jacob=config.celltype.jacob
+        embed=config.celltype.embed
         num_cls=config.celltype.num_cls
-        super().__init__(features, num_region_per_sample, celltype, data_dir, interpret_dir, input, jacob, num_cls)
+        super().__init__(features, num_region_per_sample, celltype, data_dir, interpret_dir, input, jacob, embed, num_cls)
 
 
 
