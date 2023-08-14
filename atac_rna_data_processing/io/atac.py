@@ -211,7 +211,7 @@ The self parameter is a reference to the current instance of the class, and is u
         else:
             tf_list = pd.read_csv(tf_list, header=0).gene_name.values
             tf_atac = self.promoter_atac.query("gene_name in @tf_list")
-            return tf_atac.groupby('gene_name').Accessibility.mean().reindex(tf_list, fill_value=0)
+            return tf_atac.groupby('gene_name').Score.mean().reindex(tf_list, fill_value=0)
 
     def get_sequence(self, slop=100, target_length=2000):
         """Get the sequence of the peaks, extended by slop bp on each side."""
