@@ -11,22 +11,30 @@ from atac_rna_data_processing.config.load_config import *
 from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
+import networkx as nx
+import cdt
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from scipy.stats import zscore
+from tqdm import tqdm
+# import r2_score
+from atac_rna_data_processing.io.causal_lib import preprocess_net
+import matplotlib.pyplot as plt
+import networkx.algorithms.community as nxcom
 
 motif = NrMotifV1.load_from_pickle(
     pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
 )
-# cannot find ../data/NrMotifV1.pkl, fix it using
-
-# Load motif_annot and motif_clusters from tsv and txt files
-# motif_annot = pd.read_csv("data/motif_annot.tsv", sep='\t', names=[
-#                           'cluter_id', 'cluster_name', 'motif', 'symbol', 'db', 'seq', 'Relative_orientation', 'Width', 'Left_offset', 'Right_offset'])
-
 motif_clusters = motif.cluster_names
 
 # Load gencode_hg38 from feather file
 gencode_hg38 = pd.read_feather("./gencode.v40.hg38.feather")
 gencode_hg38["Strand"] = gencode_hg38["Strand"].apply(lambda x: 0 if x == "+" else 1)
 gene2strand = gencode_hg38.set_index("gene_name").Strand.to_dict()
+
+
 
 
 class Celltype:
@@ -54,79 +62,118 @@ class Celltype:
         self.num_cls = num_cls
         self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
+        if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
+            self._zarr_data = zarr.open(
+                os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
+            )   
+            self.genelist = self._zarr_data['avaliable_genes']
+        else:
+            self.genelist = np.load(
+                os.path.join(self.interpret_cell_dir, "avaliable_genes.npy")
+            )
+        
         if not os.path.exists(self.gene_feather_path):
             self.gene_feather_path = (
                 f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
             )
-        self.genelist = np.load(
-            os.path.join(self.interpret_cell_dir, "avaliable_genes.npy")
-        )
         self.peak_annot = pd.read_csv(
             self.data_dir + celltype + ".csv", sep=","
         ).rename(columns={"Unnamed: 0": "index"})
         self.gene_annot = self.load_gene_annot()
-        self.gene_annot["Strand"] = self.gene_annot["gene_name"].apply(
-            lambda x: gene2strand[x]
-        )
         tss_idx = self.gene_annot.level_0.values
         self.tss_idx = tss_idx
         if input:
             self.input = load_npz(self.data_dir + celltype + ".watac.npz")[tss_idx]
             self.input_all = load_npz(self.data_dir + celltype + ".watac.npz")
             self.tss_accessibility = self.input[:, self.num_features - 1]
-        self.tss_strand = self.gene_annot.Strand.values
+        self.gene_annot["Strand"] = self.gene_annot["gene_name"].apply(
+                        lambda x: gene2strand[x])
+        self.tss_strand = self.gene_annot.Strand.astype(int).values
         self.tss_start = self.peak_annot.iloc[tss_idx].Start.values
-        if embed:
-            if os.path.exists(os.path.join(self.interpret_cell_dir, "embeds_0.npy")):
-                self.embed = np.load(
-                    os.path.join(self.interpret_cell_dir, "embeds_0.npy")
-                )
-            else:
-                raise ValueError("embeds_0.npy not found")
 
-        if jacob:
-            # check if os.path.join(self.interpret_cell_dir, "jacobians.zarr") exists, if not save the matrix to zarr file
-            if os.path.exists(os.path.join(self.interpret_cell_dir, "jacobians.zarr")):
-                # load from zarr file
-                self.jacobs = zarr.open(
-                    os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
-                )
-            else:
-                jacob_npz = coo_matrix(
-                    load_npz(os.path.join(self.interpret_cell_dir, "jacobians.npz"))
-                )
-                z = zarr.zeros(
-                    shape=jacob_npz.shape,
-                    chunks=(100, jacob_npz.shape[1]),
-                    dtype=jacob_npz.dtype,
-                )
-                z.set_coordinate_selection(
-                    (jacob_npz.row, jacob_npz.col), jacob_npz.data
-                )
-                # save to zarr file
-                zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
-                self.jacobs = zarr.open(
-                    os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
-                )
 
-        self.preds = load_npz(os.path.join(self.interpret_cell_dir, "preds.npz"))
-        self.preds = np.array(
-            [
-                self.preds[i]
-                .toarray()
-                .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
-                for i, j in enumerate(self.tss_strand)
-            ]
-        )
-        self.obs = load_npz(os.path.join(self.interpret_cell_dir, "obs.npz"))
-        self.obs = np.array(
-            [
-                self.obs[i]
-                .toarray()
-                .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
-                for i, j in enumerate(self.tss_strand)
-            ]
-        )
+        if hasattr(self, "_zarr_data"):
+            import time
+            start_time = time.time()
+            self.jacobs = self._zarr_data['jacobians'][:]
+            # print time with 2 decimals
+            print(f'loaded jacobians in {time.time()-start_time:.2f} seconds')
+            start_time = time.time()
+            self.preds = np.array(self._zarr_data["preds"][:])
+            self.preds = np.array(
+                [
+                    self.preds[i]
+                    .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
+                    for i, j in enumerate(self.tss_strand)
+                ]
+            )
+            self.obs = np.array(self._zarr_data["obs"][:])
+            self.obs = np.array(
+                [
+                    self.obs[i]
+                    .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
+                    for i, j in enumerate(self.tss_strand)
+                ]
+            )
+            print(f'loaded preds and obs in {time.time()-start_time:.2f} seconds')
+            start_time = time.time()
+            self.embed = self._zarr_data["embeds_0"][:]
+            print(f'loaded embeds in {time.time()-start_time:.2f} seconds')
+
+        else:
+            if embed:
+                if os.path.exists(os.path.join(self.interpret_cell_dir, "embeds_0.npy")):
+                    self.embed = np.load(
+                        os.path.join(self.interpret_cell_dir, "embeds_0.npy")
+                    )
+                else:
+                    raise ValueError("embeds_0.npy not found")
+
+            if jacob:
+                # check if os.path.join(self.interpret_cell_dir, "jacobians.zarr") exists, if not save the matrix to zarr file
+                if os.path.exists(os.path.join(self.interpret_cell_dir, "jacobians.zarr")):
+                    # load from zarr file
+                    self.jacobs = zarr.open(
+                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
+                    )
+                else:
+                    jacob_npz = coo_matrix(
+                        load_npz(os.path.join(self.interpret_cell_dir, "jacobians.npz"))
+                    )
+                    z = zarr.zeros(
+                        shape=jacob_npz.shape,
+                        chunks=(100, jacob_npz.shape[1]),
+                        dtype=jacob_npz.dtype,
+                    )
+                    z.set_coordinate_selection(
+                        (jacob_npz.row, jacob_npz.col), jacob_npz.data
+                    )
+                    # save to zarr file
+                    zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
+                    self.jacobs = zarr.open(
+                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
+                    )
+
+            self.preds = load_npz(os.path.join(self.interpret_cell_dir, "preds.npz"))
+            self.preds = np.array(
+                [
+                    self.preds[i]
+                    .toarray()
+                    .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
+                    for i, j in enumerate(self.tss_strand)
+                ]
+            )
+            self.obs = load_npz(os.path.join(self.interpret_cell_dir, "obs.npz"))
+            self.obs = np.array(
+                [
+                    self.obs[i]
+                    .toarray()
+                    .reshape(self.num_region_per_sample, self.num_cls)[self.focus, j]
+                    for i, j in enumerate(self.tss_strand)
+                ]
+            )
+
+
         self.gene_annot["pred"] = self.preds
         self.gene_annot["obs"] = self.obs
         if input:
@@ -152,6 +199,7 @@ class Celltype:
     def load_gene_annot(self):
         """Load gene annotations from feather file."""
         if not os.path.exists(self.gene_feather_path):
+            print("Gene exp feather not found. Constructing gene annotation from gencode...")
             # construct gene annotation from gencode
             from pyranges import PyRanges as pr
 
@@ -167,6 +215,7 @@ class Celltype:
             self.gene_feather_path = f"{self.data_dir}/{self.celltype}.exp.feather"
             gene_annot = exp
         else:
+            print("Gene exp feather found. Loading...")
             gene_annot = pd.read_feather(self.gene_feather_path)
         if self.gene_feather_path.endswith(".exp.feather"):
             gene_annot = (
@@ -243,7 +292,23 @@ class Celltype:
 
     def get_gene_by_motif(self):
         """Get the jacobian of all genes by motif."""
-        if os.path.exists(
+        if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
+            self._zarr_data = zarr.open(
+                os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
+            )
+            if 'gene_by_motif' in self._zarr_data.keys():
+                self.gene_by_motif = pd.DataFrame(
+                    self._zarr_data["gene_by_motif"][:], columns=self.features)
+            else:
+                jacobs = []
+                for g in tqdm(self.gene_annot.gene_name.unique()):
+                    for j in self.get_gene_jacobian(g):
+                        jacobs.append(j.motif_summary().T)
+                jacobs_df = pd.concat(jacobs, axis=1).T
+                # save to zarr
+                self._zarr_data.array("gene_by_motif", jacobs_df.values, dtype="float32")
+                self.gene_by_motif = jacobs_df
+        elif os.path.exists(
             f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather"
         ):
             self.gene_by_motif = pd.read_feather(
@@ -259,7 +324,18 @@ class Celltype:
                 f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather"
             )
             self.gene_by_motif = jacobs_df
-        return
+
+        if isinstance(self.gene_by_motif, pd.DataFrame):
+            self.gene_by_motif = GeneByMotif(self.celltype, self.interpret_dir, self.gene_by_motif)
+            if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
+                if 'gene_by_motif_corr' in self._zarr_data.keys():
+                    self.gene_by_motif.corr = pd.DataFrame(self._zarr_data["gene_by_motif_corr"][:], columns=self.features, index=self.features)
+                    
+                else:
+                    # compute corr and save to zarr also
+                    self._zarr_data.array("gene_by_motif_corr", self.gene_by_motif.get_corr().values, dtype="float32")
+
+        return self.gene_by_motif
 
     def get_gene_pred(self, gene_name: str):
         """Get the prediction of a gene."""
@@ -310,6 +386,22 @@ class Celltype:
         return self.gene_annot[self.gene_annot["gene_name"] == gene_name][
             "Chromosome"
         ].values[0]
+
+    def get_gene_jacobian_summary(self, gene_name: str, axis="motif"):
+        """Get the jacobian summary of a gene."""
+        gene_jacobs = self.get_gene_jacobian(gene_name)
+        if axis == "motif":
+            return pd.concat([jac.summarize(axis) for jac in gene_jacobs], axis=1).sum(
+                axis=1
+            )
+        elif axis == "region":
+            # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
+            return (
+                pd.concat([j.summarize(axis="region") for j in gene_jacobs])
+                .groupby(["index", "Chromosome", "Start"])
+                .Score.sum()
+                .reset_index()
+            )
 
 
 class GETCellType(Celltype):
@@ -454,17 +546,85 @@ class OneTSSJacobian:
 class GeneByMotif(object):
     """Gene by motif jacobian data."""
 
-    def __init__(self, annot, jacob) -> None:
+    def __init__(self, celltype, interpret_dir, jacob) -> None:
+        self.celltype = celltype
         self.data = jacob
-        self.annot = annot
+        self.interpret_dir = interpret_dir
+    
+    def __repr__(self) -> str:
+        return f"""Celltype: {self.celltype}
+        Jacob shape: {self.data.shape}
+        """
 
-    @property
-    def motif_corr(self, method="spearman", diagal_to_zero=True):
+    def get_corr(self, method="spearman", diagal_to_zero=True):
         """Get the motif correlation."""
-        corr = self.data.corr(method=method)
-        if diagal_to_zero:
-            corr = self.set_diagnal_to_zero(corr)
-        return corr
+        if not hasattr(self, "corr"):
+            corr = self.data.corr(method=method)
+            if diagal_to_zero:
+                corr = self.set_diagnal_to_zero(corr)
+            self.corr = corr
+            return self.corr
+        else:
+            return self.corr
+            
+    def get_causal(self, edgelist_file=None, permute_columns=True, n=3, overwrite=False):
+        if edgelist_file is not None and os.path.exists(edgelist_file) and not overwrite:
+            return nx.read_weighted_edgelist(edgelist_file, create_using=nx.DiGraph)
+        
+        zarr_data_path = os.path.join(self.interpret_dir, self.celltype, "allgenes", f"{self.celltype}.zarr")
+        
+        if os.path.exists(zarr_data_path+"/causal") and not overwrite:
+            return self.load_causal_from_zarr(zarr_data_path)
+        
+        data = zscore(self.data, axis=0)
+        
+        zarr_data = zarr.open(zarr_data_path, mode="a")
+        
+        for i in tqdm(range(n)):
+            if not f"causal_{i}" in zarr_data.keys() or overwrite:
+                permuted_data = data.iloc[:, np.random.permutation(data.shape[1])] if permute_columns else data.copy()
+                causal_g = self.create_causal_graph(permuted_data)
+                self.save_causal_to_zarr(zarr_data, causal_g, i)
+
+        # Load all n numpy arrays and compute the average
+        average_causal = self.compute_average_causal(zarr_data, n)
+
+        # Save the average to 'causal' in zarr
+        zarr_data.array("causal", average_causal, dtype="float32", overwrite=True)
+        
+        # create networkx graph from average_causal
+        causal_g = nx.from_numpy_array(average_causal, create_using=nx.DiGraph)
+        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
+                
+        if edgelist_file:
+            nx.write_weighted_edgelist(causal_g, edgelist_file)
+
+        return causal_g
+
+    def load_causal_from_zarr(self, zarr_data_path):
+        zarr_data = zarr.open(zarr_data_path, mode="a")
+        causal_g_numpy = zarr_data["causal"][:]
+        causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
+        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
+        return causal_g
+
+    def create_causal_graph(self, data):
+        model = cdt.causality.graph.LiNGAM()
+        output = model.predict(data)
+        causal_g = preprocess_net(output.copy())
+        causal_g_numpy = nx.to_numpy_array(causal_g, dtype="float32", nodelist=self.data.columns)
+        causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
+        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
+        return causal_g
+
+    def save_causal_to_zarr(self, zarr_data, causal_g, index):
+        causal_g_numpy = nx.to_numpy_array(causal_g, dtype="float32", nodelist=self.data.columns)
+        zarr_data.array(f"causal_{index}", causal_g_numpy, dtype="float32", overwrite=True)
+    
+    def compute_average_causal(self, zarr_data, n):
+        causal_arrays = [zarr_data[f"causal_{i}"][:] for i in range(n)]
+        average_causal = np.mean(causal_arrays, axis=0)
+        return average_causal
 
     def set_diagnal_to_zero(self, df: pd.DataFrame):
         for i in range(df.shape[0]):
