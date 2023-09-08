@@ -94,10 +94,11 @@ class Celltype:
 
         if hasattr(self, "_zarr_data"):
             import time
-            start_time = time.time()
-            self.jacobs = self._zarr_data['jacobians'][:]
-            # print time with 2 decimals
-            print(f'loaded jacobians in {time.time()-start_time:.2f} seconds')
+            if jacob:
+                start_time = time.time()
+                self.jacobs = self._zarr_data['jacobians'][:]
+                # print time with 2 decimals
+                print(f'loaded jacobians in {time.time()-start_time:.2f} seconds')
             start_time = time.time()
             self.preds = np.array(self._zarr_data["preds"][:])
             self.preds = np.array(
@@ -116,9 +117,10 @@ class Celltype:
                 ]
             )
             print(f'loaded preds and obs in {time.time()-start_time:.2f} seconds')
-            start_time = time.time()
-            self.embed = self._zarr_data["embeds_0"][:]
-            print(f'loaded embeds in {time.time()-start_time:.2f} seconds')
+            if embed:
+                start_time = time.time()
+                self.embed = self._zarr_data["embeds_0"][:]
+                print(f'loaded embeds in {time.time()-start_time:.2f} seconds')
 
         else:
             if embed:
@@ -336,6 +338,20 @@ class Celltype:
                     self._zarr_data.array("gene_by_motif_corr", self.gene_by_motif.get_corr().values, dtype="float32")
 
         return self.gene_by_motif
+
+    def get_tf_pathway(self, tf, gp = None, quantile_cutoff=0.9, exp_cutoff=0, filter_str='term_size<1000 & term_size>500', significance_threshold_method='g_SCS'):
+        self.get_gene_by_motif()
+        if gp is None:
+            from gprofiler import GProfiler
+            gp = GProfiler(return_dataframe=True)
+
+        selected_index = (self.gene_by_motif.data[tf]>self.gene_by_motif.data[tf].quantile(quantile_cutoff))
+        gene_list = self.gene_annot.loc[selected_index].query('pred>@exp_cutoff').gene_name.unique()
+        go = gp.profile(organism='hsapiens', query=list(gene_list), user_threshold=0.05, no_evidences=False, significance_threshold_method=significance_threshold_method)
+        go_filtered = go.query(filter_str)
+        pathway_genes = np.unique(np.concatenate(go_filtered.intersections.values))
+        return go_filtered, pathway_genes
+    
 
     def get_gene_pred(self, gene_name: str):
         """Get the prediction of a gene."""
@@ -630,3 +646,4 @@ class GeneByMotif(object):
         for i in range(df.shape[0]):
             df.iloc[i, i] = 0
         return df
+
