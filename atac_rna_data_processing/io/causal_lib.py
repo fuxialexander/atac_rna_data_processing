@@ -104,13 +104,14 @@ def get_subnet(G, n, type = 'neighbors'):
     else:
         raise ValueError('type must be one of parents, children, or neighbors')
 
-def preprocess_net(G, threshold=0.0, remove_nodes=False):
+def preprocess_net(G, threshold=0.0, remove_nodes=True, detect_communities=True):
     G.remove_edges_from([(n1, n2) for n1, n2, w in G.edges(data="weight") if (w < threshold and w>-threshold)])
     G.remove_edges_from(nx.selfloop_edges(G))
     if remove_nodes:
         G.remove_nodes_from(list(nx.isolates(G)))
-    communities = sorted(nxcom.greedy_modularity_communities(G), key=len, reverse=True)
-    # Set node and edge communities
-    set_node_community(G, communities)
-    set_edge_community(G)
+    if detect_communities:
+        communities = sorted(nxcom.greedy_modularity_communities(G), key=len, reverse=True)
+        # Set node and edge communities
+        set_node_community(G, communities)
+        set_edge_community(G)
     return G
