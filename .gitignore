@@ -45,3 +45,4 @@ test/k562_cut0.05.atac.bed
 human
 human/check_pretrain.py
 check_pretrain.py
+build
