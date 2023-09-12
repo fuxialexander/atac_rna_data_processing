@@ -535,7 +535,8 @@ class Celltype:
             ax[i//5][i%5].imshow(img)
             ax[i//5][i%5].axis('off')
             # add title to highest expressed gene
-            motif_cluster_genes = motif.cluster_gene_list[m_i]
+            if m_i in motif.cluster_gene_list.keys():
+                motif_cluster_genes = motif.cluster_gene_list[m_i]
             if len(motif_cluster_genes) > 1:
                 ax[i//5][i%5].set_title(f'{m_i}:{self.get_highest_exp_genes(motif_cluster_genes)}')
             else:
