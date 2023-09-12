@@ -1,6 +1,5 @@
 import os
 
-import cdt
 import matplotlib.pyplot as plt
 import networkx as nx
 import networkx.algorithms.community as nxcom
@@ -904,6 +903,11 @@ class GeneByMotif(object):
         return causal_g
 
     def create_causal_graph(self, data):
+        try:
+            import cdt
+        except ImportError:
+            print("Please install cdt package to use this function.")
+            return None
         model = cdt.causality.graph.LiNGAM()
         output = model.predict(data)
         causal_g = preprocess_net(output.copy())
