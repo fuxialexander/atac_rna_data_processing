@@ -90,12 +90,14 @@ class NrMotifV1(MotifClusterCollection):
             pickle.dump(self.__getstate__(), f)
 
     @classmethod
-    def load_from_pickle(cls, file_path):
+    def load_from_pickle(cls, file_path, motif_dir=None):
         """Load the instance of the NrMotifV1 class from a pickle file."""
         with open(file_path, 'rb') as f:
-            state = pickle.load(f)
+            state = pd.read_pickle(f)
         instance = cls.__new__(cls)
         instance.__setstate__(state)
+        if motif_dir is not None:
+            instance.motif_dir = motif_dir
         return instance
 
     def get_motif_data(self, motif_dir, base_url):

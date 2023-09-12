@@ -28,7 +28,7 @@ motif = NrMotifV1.load_from_pickle(
 motif_clusters = motif.cluster_names
 
 # Load gencode_hg38 from feather file
-gencode_hg38 = pd.read_feather("./gencode.v40.hg38.feather")
+gencode_hg38 = pd.read_feather(pkg_resources.resource_filename("atac_rna_data_processing", "data/gencode.v40.hg38.feather"))
 gencode_hg38["Strand"] = gencode_hg38["Strand"].apply(lambda x: 0 if x == "+" else 1)
 gene2strand = gencode_hg38.set_index("gene_name").Strand.to_dict()
 
