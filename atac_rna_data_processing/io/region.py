@@ -163,6 +163,12 @@ class GenomicRegion(object):
         """
         Get the Hi-C matrix of the genomic regions
         """
+        # check if hicstraw is imported
+        try:
+            import hicstraw
+        except ImportError:
+            raise ImportError("hicstraw is not installed")
+
         start = self.start#// resolution
         end = self.end #// resolution + 1
 
