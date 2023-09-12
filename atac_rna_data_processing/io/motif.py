@@ -81,9 +81,11 @@ class Motif(object):
     def __repr__(self) -> str:
         return "Motif(id={}, gene_name={}, dbd={}, database={}, cluster_id={}, cluster_name={})".format(self.id, self.gene_name, self.dbd, self.database, self.cluster_id, self.cluster_name)
 
-    def plot_logo(self, filename=None):
+    def plot_logo(self, filename=None, format='png', size='large', ic_scale=True, ic_ref=0.2, ylabel='', show_xaxis=False, show_yaxis=False, show_ends=False, rotate_numbers=False, color_scheme='classic', logo_title='', fineprint=''):
         """plot seqlogo of motif using pfm file"""
-        return seqlogo.seqlogo(self.pfm, filename = filename,format='png', size='large', ic_scale=True, ic_ref=0.2, ylabel='', show_xaxis=False, show_yaxis=False, show_ends=False, rotate_numbers=False, color_scheme='classic', logo_title=self.cluster_name, fineprint='')
+        if logo_title == 'id':
+            logo_title = self.cluster_id
+        return seqlogo.seqlogo(self.pfm, filename = filename, format = format, size = size, ic_scale = ic_scale, ic_ref = ic_ref, ylabel = ylabel, show_xaxis = show_xaxis, show_yaxis = show_yaxis, show_ends = show_ends, rotate_numbers = rotate_numbers, color_scheme = color_scheme, logo_title = logo_title, fineprint = fineprint)
 
 
 class MotifCluster(object):

@@ -44,6 +44,8 @@ def fix_gene_name(x: str):
         x = 'STAT5A'
     if x == 'BC11A':
         x = 'BCL11A'
+    if x == 'Z354A':
+        x = 'ZNF354A'
     if x.startswith('SMCA'):
         x = x.replace('SMCA', 'SMARCA')
     if x.startswith('ZBT') and not x.startswith('ZBTB'):
