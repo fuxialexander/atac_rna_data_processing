@@ -57,14 +57,8 @@ class NrMotifV1(MotifClusterCollection):
     def __init__(self, motif_dir, base_url = 
     "https://resources.altius.org/~jvierstra/projects/motif-clustering/releases/v1.0/"):
         super().__init__()
-        if os.path.exists(os.path.join(motif_dir, "pfm")):
-            pass
-        else:
-            print("Downloading PFMs...")
-            os.system("cd {motif_dir} && wget --recursive --no-parent {url}pfm/".format(motif_dir=motif_dir, url=os.path.join(base_url, "pfm"))) 
         self.motif_dir = motif_dir
-
-        self.annotations = self.get_motif_annotations(motif_dir, base_url)
+        self.annotations = self.get_motif_data(motif_dir, base_url)
         matrices = []
         matrices_rc = []
         for motif in self.get_motif_list():
@@ -104,9 +98,14 @@ class NrMotifV1(MotifClusterCollection):
         instance.__setstate__(state)
         return instance
 
-    def get_motif_annotations(self, motif_dir, base_url):
+    def get_motif_data(self, motif_dir, base_url):
         """Get motif clusters from the non-redundant motif v1.0 release."""
         # download files
+        if os.path.exists(os.path.join(motif_dir, "pfm")):
+            pass
+        else:
+            print("Downloading PFMs...")
+            os.system("cd {motif_dir} && wget --recursive --no-parent {url}pfm/".format(motif_dir=motif_dir, url=os.path.join(base_url, "pfm"))) 
         if os.path.exists(motif_dir + "motif_annotations.csv"):
             motif_annotations = pd.read_csv(motif_dir + "motif_annotations.csv")
         else:
