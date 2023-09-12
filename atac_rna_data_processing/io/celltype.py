@@ -539,7 +539,7 @@ class Celltype:
             
         return fig, ax
     
-    def plot_motif_subnet(self, motif, m, type='neighbors', threshold='auto'):
+    def plotly_motif_subnet(self, motif, m, type='neighbors', threshold='auto'):
         """
         Plots a subnet of motifs.
 
@@ -564,6 +564,53 @@ class Celltype:
         tf_exp_mean = {m:self.get_tf_exp_mean(motif, m) for m in motif.cluster_gene_list.keys()}
         return plotly_networkx_digraph(subnet, tf_exp_str, tf_exp_mean)
 
+    def plotly_gene_exp(self):
+        import plotly.express as px
+        import pandas as pd
+        df = pd.DataFrame(self.gene_annot)
+        fig = px.scatter(df.groupby('gene_name')[['obs', 'pred','accessibility']].mean().reset_index(), x='obs', y='pred', color='accessibility', hover_name='gene_name', 
+                        labels={'obs': 'Observed log10 TPM', 'pred': 'Predicted log10 TPM', 'accessibility': 'TSS Accessibility'},
+                        width=900, height=800, template='plotly_white', opacity=0.8, marginal_x='histogram', marginal_y='histogram')
+        # add a text annotation of pearson correlation
+        fig.add_annotation(
+            x=0.1,
+            y=1.0,
+            text=f"self type: {self.selftype_name}<br />Pearson correlation: {df.groupby('gene_name')[['obs', 'pred']].mean().corr().values[0,1]:.2f}",
+            showarrow=False,
+            xref="paper",
+            yref="paper",
+            font=dict(
+                family="Arial",
+                size=16,
+                color="black"
+            ),
+            align="left",
+            bordercolor="black",
+            borderwidth=1,
+            borderpad=4,
+            bgcolor="white",
+            opacity=0.8
+        )
+        # all font to Arial
+        fig.update_layout(
+            font_family="Arial",
+            font_color="black",
+            title_font_family="Arial",
+            title_font_color="black",
+            legend_title_font_color="black",
+            legend_font_color="black",
+            xaxis_title_font_family="Arial",
+            yaxis_title_font_family="Arial",
+            xaxis_title_font_color="black",
+            yaxis_title_font_color="black",
+            xaxis_tickfont_family="Arial",
+            yaxis_tickfont_family="Arial",
+            xaxis_tickfont_color="black",
+            yaxis_tickfont_color="black",
+            xaxis_tickcolor="black",
+            yaxis_tickcolor="black")
+
+        return fig
 
     def plot_gene_regions(self, gene, plotly=False):
         r = self.get_gene_jacobian_summary(gene, 'region')
