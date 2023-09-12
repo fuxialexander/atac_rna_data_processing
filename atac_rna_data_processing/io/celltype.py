@@ -575,7 +575,7 @@ class Celltype:
         fig.add_annotation(
             x=0.1,
             y=1.0,
-            text=f"self type: {self.selftype_name}<br />Pearson correlation: {df.groupby('gene_name')[['obs', 'pred']].mean().corr().values[0,1]:.2f}",
+            text=f"self type: {self.celltype_name}<br />Pearson correlation: {df.groupby('gene_name')[['obs', 'pred']].mean().corr().values[0,1]:.2f}",
             showarrow=False,
             xref="paper",
             yref="paper",
