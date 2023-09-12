@@ -566,7 +566,9 @@ class Celltype:
         subnet = preprocess_net(causal.copy(), threshold)
         subnet = get_subnet(subnet, m, type)
         tf_exp_str = {m:self.get_tf_exp_str(motif, m) for m in motif.cluster_names}
+        tf_exp_str['Accessiblity'] = ['TSS Accessibility']
         tf_exp_mean = {m:self.get_tf_exp_mean(motif, m) for m in motif.cluster_names}
+        tf_exp_mean['Accessiblity'] = [50]
         return plotly_networkx_digraph(subnet, tf_exp_str, tf_exp_mean)
 
     def plotly_gene_exp(self):
