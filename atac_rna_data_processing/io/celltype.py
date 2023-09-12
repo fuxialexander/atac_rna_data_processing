@@ -433,6 +433,8 @@ class Celltype:
         Example:
         'gene1\t1.23<br />gene2\t0.56<br />gene3\t0.45'
         """
+        if m not in motif.cluster_gene_list.keys():
+            return m
         motif_cluster_genes = motif.cluster_gene_list[m]
         motif_cluster_genes_exp = self.get_genes_exp(motif_cluster_genes).groupby('gene_name').pred.mean().sort_values(ascending=False)
         # turn in to a formated table in one string: gene_name\tpred, 2 digit floating point
@@ -449,6 +451,8 @@ class Celltype:
         Returns:
         float: The mean expression of TFs for the given motif and cluster.
         """
+        if m not in motif.cluster_gene_list.keys():
+            return np.nan
         motif_cluster_genes = motif.cluster_gene_list[m]
         motif_cluster_genes_exp = self.get_genes_exp(motif_cluster_genes).groupby('gene_name').pred.mean()
         return motif_cluster_genes_exp.mean()
@@ -560,8 +564,8 @@ class Celltype:
             threshold = pd.DataFrame(causal.edges(data='weight'), columns=['From', 'To', 'Weight']).sort_values('Weight').Weight.abs().quantile(0.7)
         subnet = preprocess_net(causal.copy(), threshold)
         subnet = get_subnet(subnet, m, type)
-        tf_exp_str = {m:self.get_tf_exp_str(motif, m) for m in motif.cluster_gene_list.keys()}
-        tf_exp_mean = {m:self.get_tf_exp_mean(motif, m) for m in motif.cluster_gene_list.keys()}
+        tf_exp_str = {m:self.get_tf_exp_str(motif, m) for m in motif.cluster_names}
+        tf_exp_mean = {m:self.get_tf_exp_mean(motif, m) for m in motif.cluster_names}
         return plotly_networkx_digraph(subnet, tf_exp_str, tf_exp_mean)
 
     def plotly_gene_exp(self):
@@ -570,7 +574,7 @@ class Celltype:
         df = pd.DataFrame(self.gene_annot)
         fig = px.scatter(df.groupby('gene_name')[['obs', 'pred','accessibility']].mean().reset_index(), x='obs', y='pred', color='accessibility', hover_name='gene_name', 
                         labels={'obs': 'Observed log10 TPM', 'pred': 'Predicted log10 TPM', 'accessibility': 'TSS Accessibility'},
-                        template='plotly_white', opacity=0.8, marginal_x='histogram', marginal_y='histogram')
+                        template='plotly_white', width=600, height=500, opacity=0.5, marginal_x='histogram', marginal_y='histogram')
         # add a text annotation of pearson correlation
         fig.add_annotation(
             x=0.1,
