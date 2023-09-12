@@ -575,7 +575,7 @@ class Celltype:
         df = pd.DataFrame(self.gene_annot)
         fig = px.scatter(df.groupby('gene_name')[['obs', 'pred','accessibility']].mean().reset_index(), x='obs', y='pred', color='accessibility', hover_name='gene_name', 
                         labels={'obs': 'Observed log10 TPM', 'pred': 'Predicted log10 TPM', 'accessibility': 'TSS Accessibility'},
-                        template='plotly_white', width=800, height=700, opacity=0.5, marginal_x='histogram', marginal_y='histogram')
+                        template='plotly_white', width=600, height=500, opacity=0.5, marginal_x='histogram', marginal_y='histogram')
         # add a text annotation of pearson correlation
         fig.add_annotation(
             x=0.1,
