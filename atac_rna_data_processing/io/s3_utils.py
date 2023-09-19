@@ -1,8 +1,9 @@
 import os
 
-import numpy as np
 import s3fs
 import zarr
+import numpy as np
+from scipy.sparse import load_npz
 
 
 def path_exists_with_s3(file_path, s3_file_sys=None):
@@ -22,3 +23,9 @@ def load_np_with_s3(file_path, s3_file_sys=None):
         return np.load(s3_file_sys.open(file_path))
     else:
         return np.load(file_path)
+
+def load_npz_with_s3(file_path, s3_file_sys=None):
+    if s3_file_sys:
+        return load_npz(s3_file_sys.open(file_path))
+    else:
+        return load_npz(file_path)

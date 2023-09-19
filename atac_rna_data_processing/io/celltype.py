@@ -62,7 +62,7 @@ class Celltype:
         self.num_cls = num_cls
         self.s3_file_sys = s3_file_sys
         self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
-        self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
+        self.gene_feather_path = f"{self.data_dir}{celltype}.exp.feather"
         if path_exists_with_s3(
             os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
             s3_file_sys=self.s3_file_sys
@@ -91,8 +91,9 @@ class Celltype:
         tss_idx = self.gene_annot.level_0.values
         self.tss_idx = tss_idx
         if input:
-            self.input = load_np_with_s3(self.data_dir + celltype + ".watac.npz", s3_file_sys=self.s3_file_sys)[tss_idx]
-            self.input_all = load_np_with_s3(
+            breakpoint()
+            self.input = load_npz_with_s3(self.data_dir + celltype + ".watac.npz", s3_file_sys=self.s3_file_sys)[tss_idx]
+            self.input_all = load_npz_with_s3(
                 self.data_dir + celltype + ".watac.npz",
                 s3_file_sys=self.s3_file_sys
             )
@@ -157,7 +158,7 @@ class Celltype:
                     )
                 else:
                     jacob_npz = coo_matrix(
-                        load_np_with_s3(os.path.join(self.interpret_cell_dir, "jacobians.npz"), s3_file_sys=self.s3_file_sys)
+                        load_npz_with_s3(os.path.join(self.interpret_cell_dir, "jacobians.npz"), s3_file_sys=self.s3_file_sys)
                     )
                     z = zarr.zeros(
                         shape=jacob_npz.shape,
@@ -175,7 +176,7 @@ class Celltype:
                         s3_file_sys=self.s3_file_sys
                     )
 
-            self.preds = load_np_with_s3(os.path.join(self.interpret_cell_dir, "preds.npz"), s3_file_sys=self.s3_file_sys)
+            self.preds = load_npz_with_s3(os.path.join(self.interpret_cell_dir, "preds.npz"), s3_file_sys=self.s3_file_sys)
             self.preds = np.array(
                 [
                     self.preds[i]
@@ -184,7 +185,7 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-            self.obs = load_np_with_s3(os.path.join(self.interpret_cell_dir, "obs.npz"), s3_file_sys=self.s3_file_sys)
+            self.obs = load_npz_with_s3(os.path.join(self.interpret_cell_dir, "obs.npz"), s3_file_sys=self.s3_file_sys)
             self.obs = np.array(
                 [
                     self.obs[i]
@@ -233,13 +234,14 @@ class Celltype:
             ).as_df()
             # save the data to feather file
             exp.reset_index(drop=True).to_feather(
-                f"{self.data_dir}/{self.celltype}.exp.feather"
+                f"{self.data_dir}{self.celltype}.exp.feather"
             )
-            self.gene_feather_path = f"{self.data_dir}/{self.celltype}.exp.feather"
+            self.gene_feather_path = f"{self.data_dir}{self.celltype}.exp.feather"
             gene_annot = exp
         else:
             print("Gene exp feather found. Loading...")
             gene_annot = pd.read_feather(self.gene_feather_path)
+            gene_annot["Strand"] = gene_annot["Strand"].apply(lambda x: 0 if x == "+" else 1)
         if self.gene_feather_path.endswith(".exp.feather"):
             gene_annot = (
                 gene_annot.groupby(["gene_name", "Strand"])["index"]
