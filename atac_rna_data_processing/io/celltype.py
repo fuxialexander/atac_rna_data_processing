@@ -1,6 +1,5 @@
 import os
 
-import s3fs
 import matplotlib.pyplot as plt
 import networkx as nx
 import networkx.algorithms.community as nxcom
@@ -11,7 +10,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 import zarr
 from plotly.subplots import make_subplots
-from scipy.sparse import coo_matrix, csr_matrix, load_npz
+from scipy.sparse import coo_matrix, csr_matrix
 from scipy.stats import zscore
 from tqdm import tqdm
 
@@ -23,6 +22,7 @@ from atac_rna_data_processing.io.causal_lib import (get_subnet, plot_comm,
 from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
+from atac_rna_data_processing.io.s3_utils import *
 
 
 motif = NrMotifV1.load_from_pickle(
@@ -36,7 +36,6 @@ gencode_hg38["Strand"] = gencode_hg38["Strand"].apply(lambda x: 0 if x == "+" el
 gene2strand = gencode_hg38.set_index("gene_name").Strand.to_dict()
 
 
-
 class Celltype:
     """All information of a cell type"""
 
@@ -46,7 +45,7 @@ class Celltype:
         num_region_per_sample: int,
         celltype: str,
         data_dir="../pretrain_human_bingren_shendure_apr2023",
-        interpret_dir="Interpretation_all_hg38_allembed_v4_natac",
+        interpret_dir="Interpretation",
         input=False,
         jacob=False,
         embed=False,
@@ -62,74 +61,61 @@ class Celltype:
         self.num_region_per_sample = num_region_per_sample
         self.focus = num_region_per_sample // 2
         self.num_cls = num_cls
-        self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
-        self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
         self.s3_uri = s3_uri
         self.s3_file_sys = s3_file_sys
-
-        if self.s3_uri: # Use S3 path if exists
-            if self.s3_file_sys.exists(f"{self.s3_uri}/{self.interpret_cell_dir}/{self.celltype}.zarr"):
-                store = zarr.storage.FSStore()
-                self._zarr_data = zarr.open(
-                    s3fs.S3Map(f"{self.s3_uri}/{self.interpret_cell_dir}/{self.celltype}.zarr")
-                )
-                self.genelist = self._zarr_data['avaliable_genes']
-            else:
-                self.genelist = np.load(
-                    self.s3_file_sys.open(f"{self.s3_uri}/{self.interpret_cell_dir}/avaliable_genes.npy")
-                )
-            if not self.s3_file_sys.exists(f"{self.s3_uri}/{self.gene_feather_path}"):
-                self.gene_feather_path = (
-                    f"{self.s3_uri}/{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
-                )
-            self.peak_annot = pd.read_csv(
-                f"{self.s3_uri}/{self.data_dir}/celltype.csv"
-            ).rename(columns={"Unnamed: 0": "index"})
-
-            self.gene_annot = self.load_gene_annot()
-            tss_idx = self.gene_annot.level_0.values
-            self.tss_idx = tss_idx
-
-            if input:
-                self.input = np.load(
-                    self.s3_file_sys.open(f"{self.s3_uri}/{self.data_dir}/celltype.watac.npz")
-                )[tss_idx]
-                self.input_all = np.load(
-                    self.s3_file_sys.open(f"{self.s3_uri}/{self.data_dir}/celltype.watac.npz")
-                )
-                self.tss_accessibility = self.input[:, self.num_features - 1]
-        else: # Run with local data
-            if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
-                self._zarr_data = zarr.open(
-                    os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
-                )   
-                self.genelist = self._zarr_data['avaliable_genes']
-            else:
-                self.genelist = np.load(
-                    os.path.join(self.interpret_cell_dir, "avaliable_genes.npy")
-                )
-            if not os.path.exists(self.gene_feather_path):
-                self.gene_feather_path = (
-                    f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
-                )
-                        self.peak_annot = pd.read_csv(
-                self.data_dir + celltype + ".csv", sep=","
-            ).rename(columns={"Unnamed: 0": "index"})
-
-            self.gene_annot = self.load_gene_annot()
-            tss_idx = self.gene_annot.level_0.values
-            self.tss_idx = tss_idx
-            
-            if input:
-                self.input = load_npz(self.data_dir + celltype + ".watac.npz")[tss_idx]
-                self.input_all = load_npz(self.data_dir + celltype + ".watac.npz")
-                self.tss_accessibility = self.input[:, self.num_features - 1]
+        self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
+        self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
+        if path_exists_with_s3(
+            file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        ):
+            self._zarr_data = load_zarr_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+                mode="a",
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            )
+            self.genelist = self._zarr_data['avaliable_genes']
+        else:
+            self.genelist = load_np_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, "avaliable_genes.npy"),
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys,
+            )
         
+        if not path_exists_with_s3(
+            file_path=self.gene_feather_path,
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        ):
+            self.gene_feather_path = (
+                f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
+            )
+        self.peak_annot = pd.read_csv(
+            self.data_dir + celltype + ".csv", sep=","
+        ).rename(columns={"Unnamed: 0": "index"})
+        self.gene_annot = self.load_gene_annot()
+        tss_idx = self.gene_annot.level_0.values
+        self.tss_idx = tss_idx
+        if input:
+            self.input = load_np_with_s3(
+                file_path=self.data_dir + celltype + ".watac.npz",
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            )[tss_idx]
+            self.input_all = load_np_with_s3(
+                file_path=self.data_dir + celltype + ".watac.npz",
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            )
+            self.tss_accessibility = self.input[:, self.num_features - 1]
         self.gene_annot["Strand"] = self.gene_annot["gene_name"].apply(
                         lambda x: gene2strand[x])
         self.tss_strand = self.gene_annot.Strand.astype(int).values
         self.tss_start = self.peak_annot.iloc[tss_idx].Start.values
         
+
         if hasattr(self, "_zarr_data"):
             import time
             if jacob:
@@ -162,23 +148,40 @@ class Celltype:
 
         else:
             if embed:
-                if os.path.exists(os.path.join(self.interpret_cell_dir, "embeds_0.npy")):
-                    self.embed = np.load(
-                        os.path.join(self.interpret_cell_dir, "embeds_0.npy")
+                if path_exists_with_s3(
+                    file_path=os.path.join(self.interpret_cell_dir, "embeds_0.npy"),
+                    s3_uri=self.s3_uri,
+                    s3_file_sys=self.s3_file_sys
+                ):
+                    self.embed = load_np_with_s3(
+                        file_path=os.path.join(self.interpret_cell_dir, "embeds_0.npy"),
+                        s3_uri=self.s3_uri,
+                        s3_file_sys=self.s3_file_sys
                     )
                 else:
                     raise ValueError("embeds_0.npy not found")
 
             if jacob:
                 # check if os.path.join(self.interpret_cell_dir, "jacobians.zarr") exists, if not save the matrix to zarr file
-                if os.path.exists(os.path.join(self.interpret_cell_dir, "jacobians.zarr")):
+                if path_exists_with_s3(
+                    file_path=os.path.join(self.interpret_cell_dir, "jacobians.zarr"),
+                    s3_uri=self.s3_uri,
+                    s3_file_sys=self.s3_file_sys
+                ):
                     # load from zarr file
-                    self.jacobs = zarr.open(
-                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
+                    self.jacobs = load_zarr_with_s3(
+                        file_path=os.path.join(self.interpret_cell_dir, "jacobians.zarr"),
+                        mode="r",
+                        s3_uri=self.s3_uri,
+                        s3_file_sys=self.s3_file_sys
                     )
                 else:
                     jacob_npz = coo_matrix(
-                        load_npz(os.path.join(self.interpret_cell_dir, "jacobians.npz"))
+                        load_np_with_s3(
+                            file_path=os.path.join(self.interpret_cell_dir, "jacobians.npz"),
+                            s3_uri=self.s3_uri,
+                            s3_file_sys=self.s3_file_sys
+                        )
                     )
                     z = zarr.zeros(
                         shape=jacob_npz.shape,
@@ -190,11 +193,18 @@ class Celltype:
                     )
                     # save to zarr file
                     zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
-                    self.jacobs = zarr.open(
-                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"), mode="r"
+                    self.jacobs = load_zarr_with_s3(
+                        file_path=os.path.join(self.interpret_cell_dir, "jacobians.zarr"),
+                        mode="r",
+                        s3_uri=self.s3_uri,
+                        s3_file_sys=self.s3_file_sys
                     )
 
-            self.preds = load_npz(os.path.join(self.interpret_cell_dir, "preds.npz"))
+            self.preds = load_np_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, "preds.npz"),
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            )
             self.preds = np.array(
                 [
                     self.preds[i]
@@ -203,7 +213,11 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-            self.obs = load_npz(os.path.join(self.interpret_cell_dir, "obs.npz"))
+            self.obs = load_np_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, "obs.npz"),
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            )
             self.obs = np.array(
                 [
                     self.obs[i]
@@ -240,7 +254,11 @@ class Celltype:
 
     def load_gene_annot(self):
         """Load gene annotations from feather file."""
-        if not os.path.exists(self.gene_feather_path):
+        if not path_exists_with_s3(
+            file_path=self.gene_feather_path,
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        ):
             print("Gene exp feather not found. Constructing gene annotation from gencode...")
             # construct gene annotation from gencode
             from pyranges import PyRanges as pr
@@ -375,9 +393,16 @@ class Celltype:
         Returns:
             GeneByMotif: An object that contains the gene data by motif and the correlation data.
         """
-        if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
-            self._zarr_data = zarr.open(
-                os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
+        if path_exists_with_s3(
+            file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        ):
+            self._zarr_data = load_zarr_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+                mode="a",
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
             )
             if 'gene_by_motif' in self._zarr_data.keys():
                 self._gene_by_motif = pd.DataFrame(
@@ -391,8 +416,10 @@ class Celltype:
                 # save to zarr
                 self._zarr_data.array("gene_by_motif", jacobs_df.values, dtype="float32")
                 self._gene_by_motif = jacobs_df
-        elif os.path.exists(
-            f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather"
+        elif path_exists_with_s3(
+            file_path=f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather",
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
         ):
             self._gene_by_motif = pd.read_feather(
                 f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather"
@@ -410,7 +437,11 @@ class Celltype:
 
         if isinstance(self._gene_by_motif, pd.DataFrame):
             self._gene_by_motif = GeneByMotif(self.celltype, self.interpret_dir, self.gene_by_motif)
-            if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
+            if path_exists_with_s3(
+                file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            ):
                 if 'gene_by_motif_corr' in self._zarr_data.keys():
                     self._gene_by_motif.corr = pd.DataFrame(self._zarr_data["gene_by_motif_corr"][:], columns=self.features, index=self.features)
                     
@@ -568,7 +599,11 @@ class Celltype:
         m = r.sort_values(ascending=False).head(10).index.values
         fig, ax = plt.subplots(2, 5, figsize=(10, 4), sharex=False, sharey=False)
         for i, m_i in enumerate(m):
-            if not os.path.exists(f'assets/{m_i.replace("/", "_")}.png') or overwrite==True:
+            if not path_exists_with_s3(
+                file_path=f'assets/{m_i.replace("/", "_")}.png',
+                s3_uri=self.s3_uri,
+                s3_file_sys=self.s3_file_sys
+            ) or overwrite==True:
                 motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'assets/{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
             # show logo in ax[i] from the png file
             img = plt.imread(f'assets/{m_i.replace("/", "_")}.png')
@@ -784,7 +819,7 @@ class GETCellType(Celltype):
         jacob = config.celltype.jacob
         embed = config.celltype.embed
         num_cls = config.celltype.num_cls
-        s3_uri = config.s3_uri,
+        s3_uri = config.s3_uri
         s3_file_sys = config.s3_file_sys
         super().__init__(
             features,
@@ -797,7 +832,7 @@ class GETCellType(Celltype):
             embed,
             num_cls,
             s3_uri,
-            s3_file_sys,
+            s3_file_sys
         )
 
 
@@ -960,17 +995,28 @@ class GeneByMotif(object):
         self._causal = value
             
     def get_causal(self, edgelist_file=None, permute_columns=True, n=3, overwrite=False):
-        if edgelist_file is not None and os.path.exists(edgelist_file) and not overwrite:
+        if edgelist_file is not None and path_exists_with_s3(
+            file_path=edgelist_file, s3_uri=self.s3_uri, s3_file_sys=self.s3_file_sys
+        ) and not overwrite:
             return nx.read_weighted_edgelist(edgelist_file, create_using=nx.DiGraph)
         
         zarr_data_path = os.path.join(self.interpret_dir, self.celltype, "allgenes", f"{self.celltype}.zarr")
         
-        if os.path.exists(zarr_data_path+"/causal") and not overwrite:
+        if path_exists_with_s3(
+            file_path=zarr_data_path+"/causal",
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        ) and not overwrite:
             return self.load_causal_from_zarr(zarr_data_path)
         
         data = zscore(self.data, axis=0)
         
-        zarr_data = zarr.open(zarr_data_path, mode="a")
+        zarr_data = load_zarr_with_s3(
+            zarr_data_path,
+            mode="a",
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        )
         
         for i in tqdm(range(n)):
             if not f"causal_{i}" in zarr_data.keys() or overwrite:
@@ -994,7 +1040,12 @@ class GeneByMotif(object):
         return causal_g
 
     def load_causal_from_zarr(self, zarr_data_path):
-        zarr_data = zarr.open(zarr_data_path, mode="a")
+        zarr_data = load_zarr_with_s3(
+            file_path=zarr_data_path, 
+            mode="a",
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
+        )
         causal_g_numpy = zarr_data["causal"][:]
         causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
         causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
