@@ -74,7 +74,6 @@ class Celltype:
             )
             self.genelist = self._zarr_data['avaliable_genes']
         else:
-            breakpoint()
             self.genelist = load_np_with_s3(
                 file_path=os.path.join(self.interpret_cell_dir, "avaliable_genes.npy"),
                 s3_file_sys=self.s3_file_sys,
