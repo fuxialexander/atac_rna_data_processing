@@ -1,5 +1,6 @@
 import os
 
+import s3fs
 import matplotlib.pyplot as plt
 import networkx as nx
 import networkx.algorithms.community as nxcom
@@ -9,6 +10,11 @@ import pkg_resources
 import plotly.graph_objects as go
 import seaborn as sns
 import zarr
+from plotly.subplots import make_subplots
+from scipy.sparse import coo_matrix, csr_matrix, load_npz
+from scipy.stats import zscore
+from tqdm import tqdm
+
 from atac_rna_data_processing.config.load_config import *
 # import r2_score
 from atac_rna_data_processing.io.causal_lib import (get_subnet, plot_comm,
@@ -17,10 +23,7 @@ from atac_rna_data_processing.io.causal_lib import (get_subnet, plot_comm,
 from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
-from plotly.subplots import make_subplots
-from scipy.sparse import coo_matrix, csr_matrix, load_npz
-from scipy.stats import zscore
-from tqdm import tqdm
+
 
 motif = NrMotifV1.load_from_pickle(
     pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
@@ -43,11 +46,13 @@ class Celltype:
         num_region_per_sample: int,
         celltype: str,
         data_dir="../pretrain_human_bingren_shendure_apr2023",
-        interpret_dir="Interpretation",
+        interpret_dir="Interpretation_all_hg38_allembed_v4_natac",
         input=False,
         jacob=False,
         embed=False,
         num_cls=2,
+        s3_uri=None,
+        s3_file_sys=None,
     ):
         self.celltype = celltype
         self.data_dir = data_dir
@@ -59,37 +64,72 @@ class Celltype:
         self.num_cls = num_cls
         self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
-        if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
-            self._zarr_data = zarr.open(
-                os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
-            )   
-            self.genelist = self._zarr_data['avaliable_genes']
-        else:
-            self.genelist = np.load(
-                os.path.join(self.interpret_cell_dir, "avaliable_genes.npy")
-            )
+        self.s3_uri = s3_uri
+        self.s3_file_sys = s3_file_sys
+
+        if self.s3_uri: # Use S3 path if exists
+            if self.s3_file_sys.exists(f"{self.s3_uri}/{self.interpret_cell_dir}/{self.celltype}.zarr"):
+                store = zarr.storage.FSStore()
+                self._zarr_data = zarr.open(
+                    s3fs.S3Map(f"{self.s3_uri}/{self.interpret_cell_dir}/{self.celltype}.zarr")
+                )
+                self.genelist = self._zarr_data['avaliable_genes']
+            else:
+                self.genelist = np.load(
+                    self.s3_file_sys.open(f"{self.s3_uri}/{self.interpret_cell_dir}/avaliable_genes.npy")
+                )
+            if not self.s3_file_sys.exists(f"{self.s3_uri}/{self.gene_feather_path}"):
+                self.gene_feather_path = (
+                    f"{self.s3_uri}/{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
+                )
+            self.peak_annot = pd.read_csv(
+                f"{self.s3_uri}/{self.data_dir}/celltype.csv"
+            ).rename(columns={"Unnamed: 0": "index"})
+
+            self.gene_annot = self.load_gene_annot()
+            tss_idx = self.gene_annot.level_0.values
+            self.tss_idx = tss_idx
+
+            if input:
+                self.input = np.load(
+                    self.s3_file_sys.open(f"{self.s3_uri}/{self.data_dir}/celltype.watac.npz")
+                )[tss_idx]
+                self.input_all = np.load(
+                    self.s3_file_sys.open(f"{self.s3_uri}/{self.data_dir}/celltype.watac.npz")
+                )
+                self.tss_accessibility = self.input[:, self.num_features - 1]
+        else: # Run with local data
+            if os.path.exists(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")):
+                self._zarr_data = zarr.open(
+                    os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), mode="a"
+                )   
+                self.genelist = self._zarr_data['avaliable_genes']
+            else:
+                self.genelist = np.load(
+                    os.path.join(self.interpret_cell_dir, "avaliable_genes.npy")
+                )
+            if not os.path.exists(self.gene_feather_path):
+                self.gene_feather_path = (
+                    f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
+                )
+                        self.peak_annot = pd.read_csv(
+                self.data_dir + celltype + ".csv", sep=","
+            ).rename(columns={"Unnamed: 0": "index"})
+
+            self.gene_annot = self.load_gene_annot()
+            tss_idx = self.gene_annot.level_0.values
+            self.tss_idx = tss_idx
+            
+            if input:
+                self.input = load_npz(self.data_dir + celltype + ".watac.npz")[tss_idx]
+                self.input_all = load_npz(self.data_dir + celltype + ".watac.npz")
+                self.tss_accessibility = self.input[:, self.num_features - 1]
         
-        if not os.path.exists(self.gene_feather_path):
-            self.gene_feather_path = (
-                f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
-            )
-        self.peak_annot = pd.read_csv(
-            self.data_dir + celltype + ".csv", sep=","
-        ).rename(columns={"Unnamed: 0": "index"})
-        self.gene_annot = self.load_gene_annot()
-        tss_idx = self.gene_annot.level_0.values
-        self.tss_idx = tss_idx
-        if input:
-            self.input = load_npz(self.data_dir + celltype + ".watac.npz")[tss_idx]
-            self.input_all = load_npz(self.data_dir + celltype + ".watac.npz")
-            self.tss_accessibility = self.input[:, self.num_features - 1]
         self.gene_annot["Strand"] = self.gene_annot["gene_name"].apply(
                         lambda x: gene2strand[x])
         self.tss_strand = self.gene_annot.Strand.astype(int).values
         self.tss_start = self.peak_annot.iloc[tss_idx].Start.values
         
-
-
         if hasattr(self, "_zarr_data"):
             import time
             if jacob:
@@ -744,6 +784,8 @@ class GETCellType(Celltype):
         jacob = config.celltype.jacob
         embed = config.celltype.embed
         num_cls = config.celltype.num_cls
+        s3_uri = config.s3_uri,
+        s3_file_sys = config.s3_file_sys
         super().__init__(
             features,
             num_region_per_sample,
@@ -754,6 +796,8 @@ class GETCellType(Celltype):
             jacob,
             embed,
             num_cls,
+            s3_uri,
+            s3_file_sys,
         )
 
 
