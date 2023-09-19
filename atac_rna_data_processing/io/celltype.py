@@ -66,7 +66,7 @@ class Celltype:
         self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f"{self.data_dir}/{celltype}.exp.feather"
         if path_exists_with_s3(
-            file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr")
+            file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
             s3_uri=self.s3_uri,
             s3_file_sys=self.s3_file_sys
         ):
@@ -92,8 +92,11 @@ class Celltype:
             self.gene_feather_path = (
                 f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
             )
-        self.peak_annot = pd.read_csv(
-            self.data_dir + celltype + ".csv", sep=","
+        self.peak_annot = load_csv_with_s3(
+            file_path=self.data_dir + celltype + ".csv",
+            sep=",",
+            s3_uri=self.s3_uri,
+            s3_file_sys=self.s3_file_sys
         ).rename(columns={"Unnamed: 0": "index"})
         self.gene_annot = self.load_gene_annot()
         tss_idx = self.gene_annot.level_0.values
@@ -436,7 +439,13 @@ class Celltype:
             self._gene_by_motif = jacobs_df
 
         if isinstance(self._gene_by_motif, pd.DataFrame):
-            self._gene_by_motif = GeneByMotif(self.celltype, self.interpret_dir, self.gene_by_motif)
+            self._gene_by_motif = GeneByMotif(
+                self.celltype,
+                self.interpret_dir,
+                self.gene_by_motif,
+                self.s3_uri,
+                self.s3_file_sys
+            )
             if path_exists_with_s3(
                 file_path=os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
                 s3_uri=self.s3_uri,
@@ -953,10 +962,19 @@ class OneTSSJacobian:
 class GeneByMotif(object):
     """Gene by motif jacobian data."""
 
-    def __init__(self, celltype, interpret_dir, jacob) -> None:
+    def __init__(
+        self,
+        celltype,
+        interpret_dir,
+        jacob,
+        s3_uri=None,
+        s3_file_sys=None
+    ) -> None:
         self.celltype = celltype
         self.data = jacob
         self.interpret_dir = interpret_dir
+        self.s3_uri = s3_uri
+        self.s3_file_sys = s3_file_sys
         self._corr = None
         self._causal = None
     
@@ -1012,7 +1030,7 @@ class GeneByMotif(object):
         data = zscore(self.data, axis=0)
         
         zarr_data = load_zarr_with_s3(
-            zarr_data_path,
+            file_path=zarr_data_path,
             mode="a",
             s3_uri=self.s3_uri,
             s3_file_sys=self.s3_file_sys
