@@ -91,7 +91,6 @@ class Celltype:
         tss_idx = self.gene_annot.level_0.values
         self.tss_idx = tss_idx
         if input:
-            breakpoint()
             self.input = load_npz_with_s3(self.data_dir + celltype + ".watac.npz", s3_file_sys=self.s3_file_sys)[tss_idx]
             self.input_all = load_npz_with_s3(
                 self.data_dir + celltype + ".watac.npz",
@@ -108,11 +107,11 @@ class Celltype:
             import time
             if jacob:
                 start_time = time.time()
-                self.jacobs = self._zarr_data['jacobians'][:]
+                self.jacobs = self._zarr_data['jacobians']
                 # print time with 2 decimals
                 print(f'loaded jacobians in {time.time()-start_time:.2f} seconds')
             start_time = time.time()
-            self.preds = np.array(self._zarr_data["preds"][:])
+            self.preds = np.array(self._zarr_data["preds"])
             self.preds = np.array(
                 [
                     self.preds[i]
@@ -120,7 +119,7 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-            self.obs = np.array(self._zarr_data["obs"][:])
+            self.obs = np.array(self._zarr_data["obs"])
             self.obs = np.array(
                 [
                     self.obs[i]
@@ -131,7 +130,7 @@ class Celltype:
             print(f'loaded preds and obs in {time.time()-start_time:.2f} seconds')
             if embed:
                 start_time = time.time()
-                self.embed = self._zarr_data["embeds_0"][:]
+                self.embed = self._zarr_data["embeds_0"]
                 print(f'loaded embeds in {time.time()-start_time:.2f} seconds')
 
         else:
@@ -369,7 +368,7 @@ class Celltype:
             )
             if 'gene_by_motif' in self._zarr_data.keys():
                 self._gene_by_motif = pd.DataFrame(
-                    self._zarr_data["gene_by_motif"][:], columns=self.features)
+                    self._zarr_data["gene_by_motif"], columns=self.features)
             else:
                 jacobs = []
                 for g in tqdm(self.gene_annot.gene_name.unique()):
@@ -406,7 +405,7 @@ class Celltype:
             )
             if path_exists_with_s3(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), s3_file_sys=self.s3_file_sys):
                 if 'gene_by_motif_corr' in self._zarr_data.keys():
-                    self._gene_by_motif.corr = pd.DataFrame(self._zarr_data["gene_by_motif_corr"][:], columns=self.features, index=self.features)
+                    self._gene_by_motif.corr = pd.DataFrame(self._zarr_data["gene_by_motif_corr"], columns=self.features, index=self.features)
                     
                 else:
                     # compute corr and save to zarr also
@@ -1007,7 +1006,7 @@ class GeneByMotif(object):
             mode="a",
             s3_file_sys=self.s3_file_sys
         )
-        causal_g_numpy = zarr_data["causal"][:]
+        causal_g_numpy = zarr_data["causal"]
         causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
         causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
         return causal_g
@@ -1031,7 +1030,7 @@ class GeneByMotif(object):
         zarr_data.array(f"causal_{index}", causal_g_numpy, dtype="float32", overwrite=True)
     
     def compute_average_causal(self, zarr_data, n):
-        causal_arrays = [zarr_data[f"causal_{i}"][:] for i in range(n)]
+        causal_arrays = [zarr_data[f"causal_{i}"] for i in range(n)]
         average_causal = np.mean(causal_arrays, axis=0)
         return average_causal
 
