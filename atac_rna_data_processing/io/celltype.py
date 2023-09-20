@@ -46,6 +46,7 @@ class Celltype:
         celltype: str,
         data_dir="../pretrain_human_bingren_shendure_apr2023",
         interpret_dir="Interpretation",
+        assets_dir="assets",
         input=False,
         jacob=False,
         embed=False,
@@ -55,6 +56,7 @@ class Celltype:
         self.celltype = celltype
         self.data_dir = data_dir
         self.interpret_dir = interpret_dir
+        self.assets_dir = assets_dir
         self.features = features
         self.num_features = features.shape[0]
         self.num_region_per_sample = num_region_per_sample
@@ -562,12 +564,12 @@ class Celltype:
         fig, ax = plt.subplots(2, 5, figsize=(10, 4), sharex=False, sharey=False)
         for i, m_i in enumerate(m):
             if not path_exists_with_s3(
-                file_path=f'assets/{m_i.replace("/", "_")}.png',
+                file_path=f'{self.assets_dir}{m_i.replace("/", "_")}.png',
                 s3_file_sys=self.s3_file_sys
             ) or overwrite==True:
-                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'./assets/{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
+                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'{self.assets_dir}{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
             # show logo in ax[i] from the png file
-            img = plt.imread(f'./assets/{m_i.replace("/", "_")}.png')
+            img = plt.imread(f'{self.assets_dir}{m_i.replace("/", "_")}.png')
             ax[i//5][i%5].imshow(img)
             ax[i//5][i%5].axis('off')
             # add title to highest expressed gene
@@ -776,6 +778,7 @@ class GETCellType(Celltype):
         num_region_per_sample = config.celltype.num_region_per_sample
         data_dir = config.celltype.data_dir
         interpret_dir = config.celltype.interpret_dir
+        assets_dir = config.assets_dir
         input = config.celltype.input
         jacob = config.celltype.jacob
         embed = config.celltype.embed
@@ -787,6 +790,7 @@ class GETCellType(Celltype):
             celltype,
             data_dir,
             interpret_dir,
+            assets_dir,
             input,
             jacob,
             embed,
