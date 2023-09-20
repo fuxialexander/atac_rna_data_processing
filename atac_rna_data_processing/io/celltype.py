@@ -1006,8 +1006,7 @@ class GeneByMotif(object):
             mode="a",
             s3_file_sys=self.s3_file_sys
         )
-        causal_g_numpy = zarr_data["causal"]
-        causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
+        causal_g = nx.from_numpy_array(zarr_data["causal"][:], create_using=nx.DiGraph)
         causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
         return causal_g
 
