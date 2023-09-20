@@ -9,6 +9,7 @@ import pkg_resources
 import plotly.graph_objects as go
 import seaborn as sns
 import zarr
+from io import BytesIO
 from plotly.subplots import make_subplots
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.stats import zscore
@@ -569,7 +570,11 @@ class Celltype:
             ) or overwrite==True:
                 motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'{self.assets_dir}{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
             # show logo in ax[i] from the png file
-            img = plt.imread(f'{self.assets_dir}{m_i.replace("/", "_")}.png')
+            if self.s3_file_sys:
+                with self.s3_file_sys.open(f'{self.assets_dir}{m_i.replace("/", "_")}.png', "rb") as f:
+                    img = plt.imread(BytesIO(f.read()))
+            else:
+                img = plt.imread(f'{self.assets_dir}{m_i.replace("/", "_")}.png')
             ax[i//5][i%5].imshow(img)
             ax[i//5][i%5].axis('off')
             # add title to highest expressed gene
