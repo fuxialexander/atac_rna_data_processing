@@ -662,7 +662,7 @@ class Celltype:
         js = self.get_gene_jacobian(gene)
         r['End'] = self.peak_annot.iloc[r['index'].values].End.values
         r = r[['index', 'Chromosome', 'Start', 'End', 'Score']]
-        r = r.query('Chromosome==@r.iloc[self.focus].Chromosome')
+        r = r.query(f'Chromosome==@r.iloc[{self.focus}].Chromosome')
         r_motif = pd.concat([j.data for j in js],axis=0).drop(['Chromosome', 'Start', 'End'], axis=1).groupby('index').mean()
         r = r.merge(r_motif, left_on='index', right_index=True)
         if plotly:
