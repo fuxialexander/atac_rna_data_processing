@@ -565,9 +565,9 @@ class Celltype:
                 file_path=f'assets/{m_i.replace("/", "_")}.png',
                 s3_file_sys=self.s3_file_sys
             ) or overwrite==True:
-                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'assets/{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
+                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'./assets/{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
             # show logo in ax[i] from the png file
-            img = plt.imread(f'assets/{m_i.replace("/", "_")}.png')
+            img = plt.imread(f'./assets/{m_i.replace("/", "_")}.png')
             ax[i//5][i%5].imshow(img)
             ax[i//5][i%5].axis('off')
             # add title to highest expressed gene
