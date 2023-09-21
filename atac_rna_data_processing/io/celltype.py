@@ -671,7 +671,7 @@ class Celltype:
         r_motif = pd.concat([j.data for j in js],axis=0).drop(['Chromosome', 'Start', 'End'], axis=1).groupby('index').mean()
         r = r.merge(r_motif, left_on='index', right_index=True)
         if plotly:
-            return self.plot_region_plotly(r, bar_width=10e4)
+            return self.plot_region_plotly(r)
         else:
             return self.plot_region(r)
 
@@ -698,7 +698,7 @@ class Celltype:
         sns.despine(ax=ax, top=True, right=True, left=True, bottom=False)
         return fig, ax
 
-    def plot_region_plotly(self, df: pd.DataFrame, bar_width=None) -> go.Figure:
+    def plot_region_plotly(self, df: pd.DataFrame) -> go.Figure:
         # Create a subplot with 2 vertical panels; the second panel will be used for gene annotations
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.8, 0.2])
         
@@ -710,23 +710,25 @@ class Celltype:
         max_score = sorted_df['Score'].abs().max()
         sorted_df['NormalizedHeight'] = sorted_df['Score'].abs() / max_score
         
-        # Compute genomic span, normalized positions and widths
+        # Compute genomic span, normalized positions, and heights
         genomic_span = sorted_df['End'].max() - sorted_df['Start'].min()
-        x_positions = sorted_df['Start']
-        
-        if bar_width is None:
-            widths = (sorted_df['End'] - sorted_df['Start']) / genomic_span
-        else:
-            widths = [bar_width for item in sorted_df['End']]
+        x_positions = (sorted_df['Start'] + sorted_df['End'])/2
         heights = sorted_df['NormalizedHeight']
         
+        # Add bars from x-axis to scores
+        x_bar, y_bar = [], []
+        for x_coord, y_coord in zip(x_positions, heights):
+            x_bar += [x_coord, x_coord, None]
+            y_bar += [0, y_coord, None]
+        x_bar = x_bar[:-1]
+        y_bar = y_bar[:-1]
+
         # Prepare hover text for main panel
         # Add bar trace for main genomic data
         fig.add_trace(
-            go.Bar(
-                x=x_positions,
-                y=heights,
-                width=widths,
+            go.Scatter(
+                x=x_bar,
+                y=y_bar,
                 orientation='v',
                 text=hover_text,
                 hoverinfo='text'
