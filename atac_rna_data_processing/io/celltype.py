@@ -671,7 +671,7 @@ class Celltype:
         r_motif = pd.concat([j.data for j in js],axis=0).drop(['Chromosome', 'Start', 'End'], axis=1).groupby('index').mean()
         r = r.merge(r_motif, left_on='index', right_index=True)
         if plotly:
-            return self.plot_region_plotly(r)
+            return self.plot_region_plotly(r, bar_width=10e4)
         else:
             return self.plot_region(r)
 
@@ -698,7 +698,7 @@ class Celltype:
         sns.despine(ax=ax, top=True, right=True, left=True, bottom=False)
         return fig, ax
 
-    def plot_region_plotly(self, df: pd.DataFrame) -> go.Figure:
+    def plot_region_plotly(self, df: pd.DataFrame, bar_width=None) -> go.Figure:
         # Create a subplot with 2 vertical panels; the second panel will be used for gene annotations
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.8, 0.2])
         
@@ -713,7 +713,11 @@ class Celltype:
         # Compute genomic span, normalized positions and widths
         genomic_span = sorted_df['End'].max() - sorted_df['Start'].min()
         x_positions = sorted_df['Start']
-        widths = (sorted_df['End'] - sorted_df['Start']) / genomic_span
+        
+        if bar_width is None:
+            widths = (sorted_df['End'] - sorted_df['Start']) / genomic_span
+        else:
+            widths = [bar_width for item in sorted_df['End']]
         heights = sorted_df['NormalizedHeight']
         
         # Prepare hover text for main panel
