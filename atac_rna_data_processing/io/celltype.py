@@ -236,10 +236,10 @@ class Celltype:
             ).as_df()
             gene2strand['-1'] = -1
             exp["Strand"] = exp["gene_name"].apply(lambda x: gene2strand[x])
-            # save the data to feather file
-            exp.reset_index(drop=True).to_feather(
-                f"{self.data_dir}{self.celltype}.exp.feather"
-            )
+            if self.s3_file_sys is None:
+                exp.reset_index(drop=True).to_feather(
+                    f"{self.data_dir}{self.celltype}.exp.feather"
+                )
             self.gene_feather_path = f"{self.data_dir}{self.celltype}.exp.feather"
             gene_annot = exp
         else:
