@@ -234,10 +234,11 @@ class Celltype:
             exp = atac.join(
                 pr(gencode_hg38, int64=True).extend(300), how="left"
             ).as_df()
-            # save the data to feather file
-            exp.reset_index(drop=True).to_feather(
-                f"{self.data_dir}{self.celltype}.exp.feather"
-            )
+            # save the data to feather file if not s3
+            if self.s3_file_sys is None:
+                exp.reset_index(drop=True).to_feather(
+                    f"{self.data_dir}{self.celltype}.exp.feather"
+                )
             self.gene_feather_path = f"{self.data_dir}{self.celltype}.exp.feather"
             gene_annot = exp
         else:
