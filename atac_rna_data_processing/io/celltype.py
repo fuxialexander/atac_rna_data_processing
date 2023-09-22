@@ -1,5 +1,6 @@
 import os
 
+import gradio as gr
 import matplotlib.pyplot as plt
 import networkx as nx
 import networkx.algorithms.community as nxcom
@@ -541,6 +542,8 @@ class Celltype:
 
     def get_gene_chromosome(self, gene_name: str):
         """Get the chromosome of a gene."""
+        if gene_name not in self.gene_annot["gene_name"].tolist():
+            raise gr.Error("This gene's promoter is not in this cell type's open chromatin.")
         return self.gene_annot[self.gene_annot["gene_name"] == gene_name][
             "Chromosome"
         ].values[0]
