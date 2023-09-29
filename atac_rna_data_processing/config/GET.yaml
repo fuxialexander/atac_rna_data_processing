@@ -5,3 +5,4 @@ celltype:
   interpret_dir: "/home/xf2217/Projects/geneformer_nova/interpret_input_masked/"
   input: True
   jacob: True
+  embed: True

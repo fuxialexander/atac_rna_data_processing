@@ -1,5 +1,4 @@
 __pycache__
-*.feather
 *.gtf.gz
 test/*.chr*
 test/*motif*
@@ -16,7 +15,6 @@ G549
 k562
 seq2motif
 hg19ToHg38.over.chain.gz
-data/genome
 *.egg-info
 human/fetal_adult
 human/GBM
@@ -45,3 +43,4 @@ test/k562_cut0.05.atac.bed
 human
 human/check_pretrain.py
 check_pretrain.py
+build

@@ -3,6 +3,8 @@
 # 2. read Structure variants from bedpe files
 # 3. Manipulate the given sequence or bed files to accomodate the variants
 
+import random
+import time
 import pandas as pd
 import requests
 from pysam import VariantFile
@@ -11,7 +13,11 @@ from tqdm import tqdm
 from atac_rna_data_processing.io.region import GenomicRegionCollection
 from atac_rna_data_processing.io.sequence import (DNASequence,
                                                   DNASequenceCollection)
-
+import concurrent.futures
+import requests
+import pandas as pd
+from tqdm import tqdm
+import numpy as np
 
 def read_gwas_catalog(genome, gwas_catalog_csv_file):
     """Read GWAS catalog
@@ -44,6 +50,44 @@ def read_vcf(self):
 
     return
 
+
+def fetch_rsid_data(server, rsid, max_retries=5):
+    """Fetch RSID data with retry mechanism for rate limiting."""
+    ext = f"/variation/human/{rsid}?"
+    for i in range(max_retries):
+        try:
+            r = requests.get(server+ext, headers={"Content-Type": "application/json"})
+            r.raise_for_status()
+            decoded = pd.DataFrame(r.json()['mappings'])
+            decoded['RSID'] = rsid
+            return decoded
+        except requests.exceptions.HTTPError as err:
+            if r.status_code == 429 and i < max_retries - 1:  # Too Many Requests
+                wait_time = (2 ** i) + random.random()
+                time.sleep(wait_time)
+            else:
+                raise err
+
+def read_rsid_parallel(genome, rsid_file, num_workers=10):
+    """Read VCF file, only support hg38
+    """
+    rsid_list = np.loadtxt(rsid_file, dtype=str)
+    server = "http://rest.ensembl.org"
+    df = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        future_to_rsid = {executor.submit(fetch_rsid_data, server, rsid): rsid for rsid in tqdm(rsid_list)}
+        for future in concurrent.futures.as_completed(future_to_rsid):
+            df.append(future.result())
+
+    df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
+    df['Start'] = df['start']-1
+    df['End'] = df['start']
+    df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
+    df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
+    df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
+
+    return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']])
 
 def read_rsid(genome, rsid_file):
     """Read VCF file, only support hg38

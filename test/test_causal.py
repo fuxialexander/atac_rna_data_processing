@@ -21,7 +21,7 @@ GET_CONFIG.celltype.jacob=True
 GET_CONFIG.celltype.num_cls=2
 GET_CONFIG.celltype.input=True
 GET_CONFIG.celltype.embed=True
-GET_CONFIG.celltype.data_dir = '/pmglocal/xf2217/tmp/fetal_adult/'
+GET_CONFIG.celltype.data_dir = '/pmglocal/xf2217/tmp/TFAtlas/'
 GET_CONFIG.celltype.interpret_dir='/pmglocal/xf2217/tmp/Interpretation_all_hg38_allembed_v4_natac'
 #%%
 celltype = sys.argv[1]
