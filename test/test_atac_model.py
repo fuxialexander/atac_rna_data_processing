@@ -124,7 +124,7 @@ class TransformerBlock(nn.Module):
         x = self.transformer_encoder(x)
         return x.permute(1, 0, 2)
     
-
+#test atac model
 class CombinedBlock(nn.Module):
     def __init__(self, conv_params, transformer_params):
         super(CombinedBlock, self).__init__()
