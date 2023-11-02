@@ -112,7 +112,6 @@ class ConvBlock(nn.Module):
             x += self.match_channels(x)         
         return self.relu(x)
 
-# %%
 class TransformerBlock(nn.Module):
     def __init__(self, d_model=64, nhead=8, num_encoder_layers=1):
         super(TransformerBlock, self).__init__()
@@ -120,32 +119,72 @@ class TransformerBlock(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
     def forward(self, x):
-        x = x.permute(1, 0, 2) 
+        
+        x = x.permute(1, 0, 2)
         x = self.transformer_encoder(x)
-        return x.permute(1, 0, 2)
-    
-#test atac model
+        x = x.permute(1, 0, 2)
+        return x
+
+# %% 
 class CombinedBlock(nn.Module):
-    def __init__(self, conv_params, transformer_params):
+    def __init__(self, conv_size, conv_stride=1, conv_dilation=1, 
+                 hidden_in=64, hidden=64, first_block=False, 
+                 d_model=64, nhead=8, num_encoder_layers=1):
         super(CombinedBlock, self).__init__()
+        
+        assert hidden == d_model, "Output feature size of ConvBlock must match input feature size of TransformerBlock"
 
-        # Conv Params
-        size = conv_params.get('size', 3)
-        stride = conv_params.get('stride', 1)
-        dilation = conv_params.get('dilation', 1)
-        hidden_in = conv_params.get('hidden_in', 64)
-        hidden = conv_params.get('hidden', 64)
-        first_block = conv_params.get('first_block', False)
-
-        # Transformer Params
-        d_model = transformer_params.get('d_model', 64)
-        nhead = transformer_params.get('nhead', 8)
-        num_encoder_layers = transformer_params.get('num_encoder_layers', 1)
-
-        self.conv_block = ConvBlock(size, stride, dilation, hidden_in, hidden, first_block)
+        self.conv_block = ConvBlock(conv_size, conv_stride, conv_dilation, hidden_in, hidden, first_block)
         self.transformer_block = TransformerBlock(d_model, nhead, num_encoder_layers)
 
     def forward(self, x):
         x = self.conv_block(x)
+        x = x.permute(0, 2, 1)
         x = self.transformer_block(x)
+        
         return x
+
+
+
+# %%
+class RegionalCombinedBlock(nn.Module):
+    def __init__(self, num_regions, conv_size, conv_stride=1, conv_dilation=1, 
+                 hidden_in=64, hidden=64, first_block=False, 
+                 d_model=64, nhead=8, num_encoder_layers=1):
+        super(RegionalCombinedBlock, self).__init__()
+
+        # Create a list of CombinedBlocks for each region
+        self.blocks = nn.ModuleList([
+            CombinedBlock(conv_size, conv_stride, conv_dilation, hidden_in, hidden, first_block, d_model, nhead, num_encoder_layers)
+            for _ in range(num_regions)
+        ])
+
+    def forward(self, x):
+        # Assuming x is of shape (batch_size, channels, sequence_length)
+        # We'll split the sequence length dimension into num_regions
+        
+        batch_size, channels, seq_length = x.shape
+        region_length = seq_length // len(self.blocks)
+        outputs = []
+        
+        for i, block in enumerate(self.blocks):
+            # Extract region from the input tensor
+            start_idx = i * region_length
+            end_idx = (i+1) * region_length
+            region = x[:, :, start_idx:end_idx]
+            
+            # Pass the region through the block
+            out = block(region)
+            
+            outputs.append(out)
+        
+        # Concatenate the outputs along the sequence_length dimension
+        return torch.cat(outputs, dim=2)
+# Create a dummy tensor of shape (batch_size, channels, sequence_length)
+# For example: batch of 32, 64 channels, and sequence length of 1000
+x = torch.randn(32, 64, 1000)  
+
+block = RegionalCombinedBlock(num_regions=10, conv_size=3, d_model=64, nhead=8, num_encoder_layers=2)
+output = block(x)
+
+# %%
