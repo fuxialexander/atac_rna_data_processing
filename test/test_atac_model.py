@@ -47,32 +47,7 @@ bed_df = pd.read_csv('k562_cut0.03.atac.bed', sep='\t', header=None)
 # Extract the fourth column as your target values
 target_values = bed_df[3].values
 
-
-# %% Get the first instance
-# class ZarrDataset(Dataset):
-
-#     def __init__(self, file_path, target_file_path, sequence_length):
-        
-#         raw_data = zarr.open(file_path, mode='r')['arr_0']
-#         self.data = torch.from_numpy(np.array(raw_data))
-#         print("Shape after loading data:", self.data.shape)    
-#         raw_targets = zarr.open(target_file_path, mode='r')['arr_0']
-#         self.target_values = torch.from_numpy(np.array(raw_targets))
-        
-#         self.sequence_length = sequence_length
-
-#     def __len__(self):
-#         return len(self.data)
-
-#     def __getitem__(self, idx):
-#         start_position = idx * self.sequence_length
-#         end_position = start_position + self.sequence_length
-        
-#         sequence_data = self.data[start_position:end_position]
-#         sequence_targets = self.target_values[start_position:end_position]
-#         print("Shape of sequence_data:", sequence_data.shape)
-#         return sequence_data, sequence_targets
-
+#% 
 class ZarrDataset(Dataset):
     # Removed sequence_length from the constructor
     def __init__(self, file_path, target_file_path):
@@ -83,34 +58,58 @@ class ZarrDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx], self.target_values[idx]
+        data = self.data[idx]
+        target = self.target_values[idx]
+        data = data.permute(1, 0)  
+        return data, target
     
-# %%
-# Define device
+#%
+print(data['arr_0'].shape)
+
+# %% Split the data into training and validation sets
 device = torch.device('cuda')  # Usually, the device is referred to as 'cuda' for NVIDIA GPUs
 
-# Split into train and validation sets
 X_train, X_val, y_train, y_val = train_test_split(data['arr_0'], target_values, test_size=0.2, random_state=42)
 
-# Save the training data
 train_data = zarr.open('train.zarr', mode='w')
 train_data.array('arr_0', X_train)
 
-# Save the training target values
 train_target_values = zarr.open('train_target_values.zarr', mode='w')
 train_target_values.array('arr_0', y_train)
 
-# Save the validation data
 val_data = zarr.open('val.zarr', mode='w')
 val_data.array('arr_0', X_val)
 
-# Save the validation target values
 val_target_values = zarr.open('val_target_values.zarr', mode='w')
 val_target_values.array('arr_0', y_val)
 
-# Then proceed to create your dataloaders
-train_loader = DataLoader(ZarrDataset('train.zarr', 'train_target_values.zarr'), batch_size=config.batch_size, shuffle=True, num_workers=10)
-val_loader = DataLoader(ZarrDataset('val.zarr', 'val_target_values.zarr'), batch_size=config.batch_size, shuffle=False, num_workers=10)
+train_loader = DataLoader(
+    ZarrDataset('train.zarr', 'train_target_values.zarr'),
+    batch_size=config.batch_size,
+    shuffle=True,
+    num_workers=10,
+    drop_last=True 
+
+)
+
+val_loader = DataLoader(
+    ZarrDataset('val.zarr', 'val_target_values.zarr'),
+    batch_size=config.batch_size,
+    shuffle=False,
+    num_workers=10,
+    drop_last=True  
+
+)
+
+# %%
+for data, target in train_loader:
+    print(f"Train batch - data shape: {data.shape}, target shape: {target.shape}")
+    break  # Just to check the first batch, then exit the loop.
+
+# Validate val_loader
+for data, target in val_loader:
+    print(f"Validation batch - data shape: {data.shape}, target shape: {target.shape}")
+    break
 
 # %% Model Building
 class ConvBlock(nn.Module):
@@ -216,107 +215,59 @@ class RegionalCombinedBlock(nn.Module):
 
 
 
-# % 
+# # %%
+# Define device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Assuming your model is composed of the RegionalCombinedBlock, which in turn includes ConvBlock and TransformerBlock
+# Initialize your model
+model = RegionalCombinedBlock(
+    num_regions=10,  # Assuming 'N=10' from UnifiedModel(N=10) corresponds to num_regions
+    conv_size=3,     # Example size, adjust as per your architecture's requirements
+    conv_stride=1,
+    conv_dilation=1,
+    hidden_in=4,     # Assuming 4 channels for DNA sequence (A, T, G, C)
+    hidden=64,       # Example feature size
+    first_block=True,# Example, adjust as per your architecture's requirements
+    d_model=64,
+    nhead=8,
+    num_encoder_layers=1
+).to(device)
+
+# Define loss function and optimizer
+criterion = nn.MSELoss().to(device) 
+optimizer = torch.optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.0001)
+
+# %%
+# Training loop
+for epoch in range(config.epochs):
+    model.train()
+    for batch_idx, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        data = data.float()
+        optimizer.zero_grad()
+        output = model(data)
+        loss = criterion(output, target)
+        loss.backward()
+        optimizer.step()
+        
+        # Print loss every N batches
+        if batch_idx % N == 0:
+            print(f'Epoch {epoch} Batch {batch_idx} Loss {loss.item()}')
+
+    # Validation step
+    model.eval()
+    with torch.no_grad():
+        val_loss = 0
+        for data, target in val_loader:
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            val_loss += criterion(output, target).item()
+        val_loss /= len(val_loader)
+        print(f'Validation Loss: {val_loss}')
+
+
 
 # # %%
-# # Define device
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# # Assuming your model is composed of the RegionalCombinedBlock, which in turn includes ConvBlock and TransformerBlock
-# # Initialize your model
-# model = RegionalCombinedBlock(
-#     num_regions=10,  # Assuming 'N=10' from UnifiedModel(N=10) corresponds to num_regions
-#     conv_size=3,     # Example size, adjust as per your architecture's requirements
-#     conv_stride=1,
-#     conv_dilation=1,
-#     hidden_in=4,     # Assuming 4 channels for DNA sequence (A, T, G, C)
-#     hidden=64,       # Example feature size
-#     first_block=True,# Example, adjust as per your architecture's requirements
-#     d_model=64,
-#     nhead=8,
-#     num_encoder_layers=1
-# ).to(device)
-
-# # Define loss function and optimizer
-# criterion = nn.MSELoss().to(device) 
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.0001)
-
-# # %% Training
-# def evaluate(model, criterion, data_loader):
-#     model.eval()  # set the model to evaluation mode
-#     total_loss = 0
-#     all_outputs = []
-#     all_labels = []
-#     with torch.no_grad():  # deactivate autograd engine to reduce memory usage and speed up computations
-#         for batch in tqdm(data_loader):
-#             seq, labels = batch
-#             seq = seq.transpose(1, 3).transpose(2, 3).float().cuda()  # Transpose and move to GPU
-#             labels = labels.float().cuda()  # Move to GPU
-#             outputs = model(seq)
-#             loss = criterion(outputs, labels)
-#             total_loss += loss.item()
-#             all_outputs.extend(outputs.cpu().numpy())  # Move outputs back to CPU for numpy conversion
-#             all_labels.extend(labels.cpu().numpy())    # Move labels back to CPU for numpy conversion
-
-#     # convert lists to numpy arrays
-#     all_outputs = np.array(all_outputs)
-#     all_labels = np.array(all_labels)
-#     # calculate additional metrics
-#     pearson_corr, _ = pearsonr(all_outputs.flatten(), all_labels.flatten())
-#     r2 = r2_score(all_labels, all_outputs)
-
-#     return total_loss / len(data_loader), pearson_corr, r2
-
-# # %% Main Training Loop
-# for epoch in range(config.epochs):  # loop over the dataset multiple times
-#     model.train()
-    
-#     # Initialize progress bar
-#     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), leave=False)
-#     train_loss = 0
-    
-#     for i, batch in progress_bar:
-#         # Prepare input and target labels
-#         seq, labels = batch
-#         seq = seq.transpose(1, 3).transpose(2, 3).float().to(device)
-#         labels = labels.float().to(device)
-        
-#         # Zero the parameter gradients
-#         optimizer.zero_grad()
-        
-#         # Forward + backward + optimize
-#         outputs = model(seq)
-#         loss = criterion(outputs, labels)
-#         loss.backward()
-#         optimizer.step()
-        
-#         # Accumulate loss
-#         train_loss += loss.item()
-        
-#         # Log the training loss for each batch
-#         wandb.log({"Batch Training Loss": loss.item()})
-    
-#     # Evaluate on both training and validation sets after each epoch
-#     train_loss, train_pearson_corr, train_r2 = evaluate(model, criterion, train_loader)
-#     val_loss, val_pearson_corr, val_r2 = evaluate(model, criterion, val_loader)
-    
-#     # Calculate and log average losses and metrics
-#     avg_train_loss = train_loss / len(train_loader)
-#     wandb.log({
-#         "Epoch": epoch,
-#         "Average Training Loss": avg_train_loss,
-#         "Training Pearson Correlation": train_pearson_corr,
-#         "Training R-squared": train_r2,
-#         "Validation Loss": val_loss,
-#         "Validation Pearson Correlation": val_pearson_corr,
-#         "Validation R-squared": val_r2
-#     })
-    
-#     # Print epoch-wise average loss
-#     print(f"Epoch {epoch + 1}/{config.epochs}. Average loss: {avg_train_loss:.4f}")
-
-# # Close the wandb run after training
-# wandb.finish()
-
 
 # %%
