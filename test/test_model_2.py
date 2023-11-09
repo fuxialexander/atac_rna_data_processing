@@ -1,4 +1,4 @@
-#%% Import package
+`#%% Import package
 import sys
 sys.path.append('..')
 from atac_rna_data_processing.io.region import *
@@ -20,7 +20,7 @@ from sklearn.model_selection import train_test_split
 # %% Initialize a new run
 # generate a new run name
 run_name = wandb.util.generate_id()
-wandb.init(project="my-project", name=run_name)
+wandb.init(project="seq_to_atac", name='version0.1-'+run_name)
 config = wandb.config
 config.batch_size = 64
 config.epochs = 5
@@ -36,11 +36,12 @@ hg38 = Genome("hg38","/manitou/pmg/users/hvl2108/atac_rna_data_processing/test/h
 gr = GenomicRegionCollection(df=df,genome=hg38)
 
 # %%
-gr.collect_sequence(target_length=1024).save_zarr("./test.zarr")
+# gr.collect_sequence(target_length=1024).save_zarr("./test.zarr")
 
 #%%
 data = zarr.load('test.zarr')
-
+#%%
+data['arr_0'].shape
 # %%  Load the BED file as a pandas DataFrame
 bed_df = pd.read_csv('k562_cut0.03.atac.bed', sep='\t', header=None)
 
@@ -76,17 +77,7 @@ class ZarrDataset(Dataset):
 # %% Model Building
 class ConvBlock(nn.Module):
     def __init__(self, size, stride=1, dilation=1, hidden_in=64, hidden=64, first_block=False):
-        """
-        Initializes the ConvBlock module.
-
-        Parameters:
-        - size (int): Kernel size for the convolutional layer.
-        - stride (int, optional): Stride for the convolutional layer. Default: 1.
-        - dilation (int, optional): Dilation for the convolutional layer. Default: 1.
-        - hidden_in (int, optional): Number of input channels. Default: 64.
-        - hidden (int, optional): Number of output channels. Default: 64.
-        - first_block (bool, optional): Whether this block is the first block. Default: False.
-        """
+        
         super(ConvBlock, self).__init__()
         
         # Calculate padding to maintain size
@@ -124,69 +115,31 @@ class ConvBlock(nn.Module):
             self.match_channels = None
 
     def forward(self, x):
-        """
-        Forward pass for the ConvBlock.
-
-        Parameters:
-        - x (Tensor): Input tensor.
-
-        Returns:
-        - Tensor: Output tensor.
-        """
-        #print(f"Input shape to ConvBlock: {x.shape}")
-
+        
         x = self.block(x)
 
-        #print(f"Output shape from ConvBlock: {x.shape}")
-
-        
         if self.match_channels:  # Adjust channels if not a first block
             res = self.match_channels(x)
             x = res + x
             
         return self.relu(x)
 
-
+#
 class TransformerBlock(nn.Module):
     def __init__(self, d_model=128, nhead=8, num_encoder_layers=1):
-        """
-        Initializes the TransformerBlock module.
-
-        Parameters:
-        - d_model (int, optional): Number of expected features in the input. Default: 128.
-        - nhead (int, optional): Number of heads in the multi-head attention mechanism. Default: 8.
-        - num_encoder_layers (int, optional): Number of encoder layers. Default: 1.
-        """
+        
         super(TransformerBlock, self).__init__()
-        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead)
+        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
 
     def forward(self, x):
-        """
-        Forward pass for the TransformerBlock.
-
-        Parameters:
-        - x (Tensor): Input tensor.
-
-        Returns:
-        - Tensor: Output tensor.
-        """
-        # Permute tensor dimensions to fit transformer's expected input format
-        x = x.permute(1, 0, 2)
         x = self.transformer(x)
-        return x.permute(1, 0, 2)
+        return x
 
 
 class UnifiedModel(nn.Module):
     def __init__(self, N, d_model=128, nhead=8):
-        """
-        Initializes the UnifiedModel module.
-
-        Parameters:
-        - N (int): Number of regions.
-        - d_model (int, optional): Number of expected features in the input. Default: 128.
-        - nhead (int, optional): Number of heads in the multi-head attention mechanism. Default: 8.
-        """
+        
         super(UnifiedModel, self).__init__()
 
         # CNN components
@@ -195,68 +148,47 @@ class UnifiedModel(nn.Module):
         # Transformer components
         self.N = N  # Number of regions
         self.transformer = TransformerBlock(d_model=d_model, nhead=nhead)
-        self.fc_final = nn.Linear(d_model, 1)
+        self.fc_final = nn.Conv1d(d_model * 10, 1, 1)
 
     def _create_cnn_blocks(self):
         blocks = nn.Sequential(
-            ConvBlock(size=20, stride=1, hidden_in=4, hidden=128, first_block=True, dilation=2),
-           # nn.AvgPool1d(2),
-            ConvBlock(size=3, stride=1, hidden_in=128, hidden=128),
-           # nn.AvgPool1d(2),
-            ConvBlock(size=3, stride=1, hidden_in=128, hidden=128),
-           # nn.AvgPool1d(2),
-            ConvBlock(size=3, stride=1, hidden_in=128, hidden=128),
-           # nn.AvgPool1d(2),
-            ConvBlock(size=3, stride=1, hidden_in=128, hidden=128),
-           # nn.AvgPool1d(2),
+            ConvBlock(size=16, stride=1, hidden_in=4, hidden=128, first_block=True, dilation=1),
+            nn.MaxPool1d(16),
+            ConvBlock(size=2, stride=1, hidden_in=128, hidden=128),
+            nn.MaxPool1d(2),
+            ConvBlock(size=2, stride=1, hidden_in=128, hidden=128),
+            nn.MaxPool1d(2),
+            ConvBlock(size=2, stride=1, hidden_in=128, hidden=128),
+           
         )
         return blocks
 
     def cnn_forward(self, x):
-        """
-        Forward pass for the CNN components.
-
-        Parameters:
-        - x (Tensor): Input tensor.
-
-        Returns:
-        - Tensor: Output tensor.
-        """
-
-#        print(f"Input shape to cnn_forward: {x.shape}")
-
+        print("Shape of input to cnn_forward:", x.shape)
         x = self.cnn_blocks(x)
-
- #       print(f"Output shape from cnn_blocks: {x.shape}")
-
-        x = x.mean(dim=2)
-
-  #      print(f"Output shape after mean: {x.shape}")
-
         return x
 
     def forward(self, x):
-        """
-        Unified forward pass for both CNN and transformer components.
-
-        Parameters:
-        - x (Tensor): Input tensor.
-
-        Returns:
-        - Tensor: Output tensor.
-        """
         
-        regions = x[:, :, :, :4]
+        # regions = x[:, :, :, :4 ]
+        regions = [x[:, i, :, :] for i in range (self.N)]
         #regions = [x[:, :, i * split_size:(i + 1) * split_size] for i in range(self.N)]
 
         cnn_outs = [self.cnn_forward(region) for region in regions]
-        cnn_out = torch.stack(cnn_outs, dim=1)#.unsqueeze(-1)  # Shape: (batch_size, N, feature_size)
+        print(cnn_outs[0].shape)
+        #THIS IS REDUCED TO [B,R,L',D]
+        cnn_out = torch.cat(cnn_outs, dim=2).transpose(1,2)#.unsqueeze(-1)  # Shape: (batch_size, feature_size, N*S)
+        #INPUT RESHAPE to get to [B,R,-1]
+        print("Shape of cnn_out:", cnn_out.shape)
         trans_out = self.transformer(cnn_out)
+        B, NS, D = trans_out.shape # Shape: (batch_size, N*S, feature_size)
+        S = NS // self.N
+        trans_out = trans_out.reshape(B, self.N, S*D).transpose(1,2)  # Shape: (batch_size, feature_size, N)
 
-        # output = self.fc_final(trans_out).sum(1).squeeze()  # Shape: (batch_size, N)
-        # output = self.fc_final(trans_out).mean(dim=2)
-        output = self.fc_final(trans_out).squeeze()
-
+        
+        #MAKE SURE shape of fully connted layer is [B,R,-1] where -1 is L' * D
+        output = self.fc_final(trans_out)
+        print(output.shape)
 
         output = F.softplus(output)
         return output
@@ -283,20 +215,13 @@ val_data.array('arr_0', X_val)
 val_target_values = zarr.open('val_target_values.zarr', mode='w')
 val_target_values.array('arr_0', y_val)
 
-# Adjust the batch size to account for the change in the size of data points
-adjusted_batch_size = config.batch_size // 10  # where n is the number of regions you want to process at a time
 
-train_loader = DataLoader(ZarrDataset('train.zarr', 'train_target_values.zarr', n=10), batch_size=adjusted_batch_size, shuffle=True, num_workers=10)
-val_loader = DataLoader(ZarrDataset('val.zarr', 'val_target_values.zarr', n=10), batch_size=adjusted_batch_size, shuffle=False, num_workers=10)
-
-# # Then proceed to create your dataloaders
-# train_loader = DataLoader(ZarrDataset('train.zarr', 'train_target_values.zarr'), batch_size=config.batch_size, shuffle=True, num_workers=10)
-# # uncomment this if i need train-test split
-# val_loader = DataLoader(ZarrDataset('val.zarr', 'val_target_values.zarr'), batch_size=config.batch_size, shuffle=False, num_workers=10)
+train_loader = DataLoader(ZarrDataset('train.zarr', 'train_target_values.zarr', 16), batch_size= 64, shuffle=True, num_workers=10, drop_last=True)
+val_loader = DataLoader(ZarrDataset('val.zarr', 'val_target_values.zarr', n=16), batch_size= 64, shuffle=False, num_workers=10, drop_last=True)
 
 # %% Define loss function and optimizer
-model = UnifiedModel(N=10).cuda()
-criterion = nn.MSELoss().cuda() 
+model = UnifiedModel(N=16).cuda()
+criterion = nn.MSELoss()#.cuda() 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00005, weight_decay=0.0001)
 
 # Specify the path to your checkpoint
@@ -331,11 +256,12 @@ def evaluate(model, criterion, data_loader):
         for batch in tqdm(data_loader):
             seq, labels = batch
             #print("Data shape before transpose method:", seq.size, labels.size)
-            seq = seq.transpose(1,2).float().cuda()
+            seq = seq.transpose(2,3).float().cuda()
+            print(seq)
             #print("Data shape after transpose method:", seq.size, labels.size)
             labels = labels.float().cuda()
-
-            outputs = model(seq)
+            print(seq.shape)
+            outputs = model(seq).squeeze(1)
             loss = criterion(outputs, labels)
             total_loss += loss.item()
             all_outputs.extend(outputs.cpu().numpy())
@@ -351,7 +277,7 @@ def evaluate(model, criterion, data_loader):
     return total_loss / len(data_loader), pearson_corr, r2
 
 # %% Train model
-for epoch in range(1):  # Number of epochs
+for epoch in range(20):  # Number of epochs
     model.train()
     
     # Start timer
@@ -363,16 +289,15 @@ for epoch in range(1):  # Number of epochs
     
     for i, batch in progress_bar:
 
-        if i >= 5:
-            break
         seq, labels = batch
-        seq = seq.transpose(1,2).transpose(2,3).float().cuda()
+        print("Data shape before transpose method:", seq.size, labels.size)
+        seq = seq.transpose(2, 3).float().cuda()
         labels = labels.float().cuda()  # Assuming labels are float type. Adjust as necessary
-        
+        print("Shape of input: ", seq.shape)
         print("Shape of target labels:", labels.shape)
         
         optimizer.zero_grad()
-        outputs = model(seq)
+        outputs = model(seq).squeeze(1)
         
         print("Shape of model output:", outputs.shape)
         
