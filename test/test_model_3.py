@@ -28,6 +28,7 @@ config.learning_rate = 0.0005
 
 # %%
 df = read_bed("/manitou/pmg/projects/resources/get_interpret/pretrain_human_bingren_shendure_apr2023/fetal_adult/118.atac.bed")
+# df = read_bed("./k562_cut0.03.atac.bed")
 df = df.df.rename(columns={"Name":"Score"})
 # %%
 df.head()
@@ -44,7 +45,7 @@ data = zarr.load('test.zarr')
 data['arr_0'].shape
 # %%  Load the BED file as a pandas DataFrame
 bed_df = pd.read_csv("/manitou/pmg/projects/resources/get_interpret/pretrain_human_bingren_shendure_apr2023/fetal_adult/118.atac.bed", sep='\t', header=None)
-
+# bed_df = pd.read_csv('k562_cut0.03.atac.bed', sep='\t', header=None)
 # Extract the fourth column as your target values
 target_values = bed_df[3].values
 
@@ -277,7 +278,7 @@ def evaluate(model, criterion, data_loader):
     return total_loss / len(data_loader), pearson_corr, r2
 
 # %% Train model
-for epoch in range(20):  # Number of epochs
+for epoch in range(50):  # Number of epochs
     model.train()
     
     # Start timer
