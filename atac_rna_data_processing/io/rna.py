@@ -21,7 +21,7 @@ def log10tpm_check(tpm):
 class RNA(object):
     """Base class for RNA expression data."""
 
-    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100, id_or_name='gene_name', tf_list=None, atac_file=None):
+    def __init__(self, sample, assembly, version=40, transform=False, extend_bp=100, id_or_name='gene_name', tf_list=None, atac_file=None, cnv_file=None):
         self.sample = sample
         self.assembly = assembly
         self.version = version
@@ -32,7 +32,7 @@ class RNA(object):
             self.atac_file = self.sample + ".csv"
         self.extend_bp = extend_bp
         self.rna = self.read_rna(id_or_name)
-        self.tss, self.exp = self.get_data()
+        self.tss, self.exp = self.get_data(cnv_file)
         self.tf_exp = self.get_tf_exp(tf_list)
 
         self.export_data()
@@ -67,7 +67,7 @@ class RNA(object):
 
         return promoter_exp.drop(['level_0', 'index'], axis=1, errors='ignore')
 
-    def get_data(self):
+    def get_data(self, cnv_file=None):
         """Get the promoter expression data. Extend the promoter region by 100bp."""
         if os.path.exists(self.sample + ".exp.feather"):
             exp = pd.read_feather(self.sample + ".exp.feather")
@@ -83,6 +83,16 @@ class RNA(object):
             exp.reset_index(drop=True).to_feather(self.sample + ".exp.feather")
 
         print(exp)
+        # if the cnv file is provided, adjust the expression data
+        # first join the cnv data with the expression data, then adjust the expression data by dividing fc
+        if cnv_file is not None:
+            cnv = pd.read_csv(cnv_file, sep='\t', header=None)
+            cnv.columns = ['Chromosome', 'Start', 'End', 'fc']
+            cnv['fc'] = cnv['fc'].apply(lambda x: 2**x)
+            exp = pr(exp).join(pr(cnv), how='left').as_df().fillna(1)
+            exp['TPM'] = exp['TPM'] / exp['fc']
+            exp = exp.drop(['fc'], axis=1)
+            print(exp)
         # group the data by the strand and calculate the mean
         exp = exp[['index', 'Strand', 'TPM']
                         ].groupby(['index', 'Strand']).mean().reset_index()
