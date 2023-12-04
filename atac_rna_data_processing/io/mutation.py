@@ -24,7 +24,6 @@ import subprocess
 from multiprocessing import Pool, get_context
 
 from atac_rna_data_processing.config.load_config import load_config
-from atac_rna_data_processing.io.mutation import read_rsid_parallel, Mutations, MutationsInCellType
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 from atac_rna_data_processing.io.celltype import GETCellType
 from atac_rna_data_processing.io.region import *
@@ -335,14 +334,23 @@ class CellMutCollection(object):
             working_dir="/manitou/pmg/users/xf2217/interpret_natac/",
             num_workers=10,
         ):
-        self.celltype_annot = pd.read_csv(celltype_annot_path)
-        self.celltype_annot_dict = self.cell_type_annot.set_index('id').celltype.to_dict()
-        self.cell_ids = sorted(glob(f"{celltype_path}/*"))
+        celltype_annot = pd.read_csv(celltype_annot_path)
+        self.celltype_annot_dict = celltype_annot.set_index('id').celltype.to_dict()
+        self.cell_ids = [os.path.basename(cell_id) for cell_id in sorted(glob(f"{celltype_path}/*"))]
 
         self.ckpt_path = model_ckpt_path
-        self.get_config = load_config(get_config_path)
         self.working_dir = working_dir
         self.num_workers = num_workers
+
+        self.get_config = load_config(get_config_path)
+        self.get_config.celltype.jacob=False
+        self.get_config.celltype.num_cls=2
+        self.get_config.celltype.input=True
+        self.get_config.celltype.embed=False
+        self.get_config.assets_dir=''
+        self.get_config.s3_file_sys=''
+        self.get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
+        self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
 
         self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', self.working_dir + "/hg38.fa")
@@ -351,8 +359,8 @@ class CellMutCollection(object):
         self.normal_variants = self.load_normal_filter_normal_variants(variants_path)
         
         self.celltype_to_get_celltype = {}
-        self.celltype_to_mut_cell_type = {}
-        
+        self.celltype_to_mut_celltype = {}
+    
     def load_normal_filter_normal_variants(self, variants_path):
         normal_variants = pd.read_csv(variants_path, sep='\t', comment='#', header=None)
         normal_variants.columns = ['Chromosome', 'Start', 'RSID', 'Ref', 'Alt', 'Qual', 'Filter', 'Info']
@@ -364,23 +372,26 @@ class CellMutCollection(object):
         return normal_variants
 
     def predict_all_celltype_expression(self):
-        with get_context("spawn").Pool(processes=self.num_workers) as p:
-            result_col = p.map(
-                self.predict_celltype_exp, tqdm(self.cell_ids, total=len(self.cell_ids)),
-            )
-        return result_col
+        # with get_context("spawn").Pool(processes=self.num_workers) as p:
+        #     result_col = p.map(
+        #         self.predict_celltype_exp, tqdm(self.cell_ids, total=len(self.cell_ids)),
+        #     )
+        # return result_col
+        results = []
+        for cell_id in tqdm(self.cell_ids):
+            results.append(self.predict_celltype_exp(cell_id))
+        return results
 
     def predict_celltype_exp(self, cell_id):
-        cell_id = os.path.basename(cell_id)
         cell_type = self.celltype_annot_dict[cell_id]
-        self.cell_type[cell_type] = GETCellType(cell_id, self.get_config)
+        self.celltype_to_get_celltype[cell_type] = GETCellType(cell_id, self.get_config)
         if pr(self.celltype_to_get_celltype[cell_type].peak_annot).join(pr(self.variants_rsid.df)).df.empty:
             return [cell_type, 1]
             
         cell_mut = MutationsInCellType(self.genome, self.variants_rsid.df, self.celltype_to_get_celltype[cell_type])
         cell_mut.get_original_input(self.motif)
         cell_mut.get_altered_input(self.motif)
-        CellMutCollection[cell_type] = cell_mut
+        self.celltype_to_mut_celltype[cell_type] = cell_mut
         ref_exp, alt_exp = cell_mut.predict_expression('rs55705857', 'MYC', 100, 200, inf_model=self.inf_model)
         return [cell_type, alt_exp/ref_exp]
 
@@ -410,3 +421,8 @@ class SVs(object):
 #     def __init__(self, gnomad_base_url):
 #         self.gnomad_base_url = gnomad_base_url
 #     ``
+
+
+if __name__=="__main__":
+    cell_mut_col = CellMutCollection()
+    results = cell_mut_col.predict_all_celltype_expression()
