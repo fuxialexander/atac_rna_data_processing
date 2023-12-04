@@ -15,6 +15,7 @@ import tabix
 import concurrent.futures
 import requests
 from glob import glob
+from itertools import repeat
 import pandas as pd
 from pyranges import PyRanges as pr
 from tqdm import tqdm
@@ -176,6 +177,36 @@ def read_rsid(genome, rsid_file):
     df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
 
     return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']])
+
+def predict_celltype_exp(
+    cell_id, 
+    get_config_path,
+    celltype_annot_dict, 
+    variants_rsid,
+    genome,
+    motif,
+    inf_model,
+):
+    get_config = load_config(get_config_path)
+    get_config.celltype.jacob=False
+    get_config.celltype.num_cls=2
+    get_config.celltype.input=True
+    get_config.celltype.embed=False
+    get_config.assets_dir=''
+    get_config.s3_file_sys=''
+    get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
+    get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
+
+    get_celltype = GETCellType(cell_id, get_config)
+    cell_type = celltype_annot_dict[cell_id]
+    if pr(get_celltype.peak_annot).join(pr(variants_rsid.df)).df.empty:
+        return [cell_type, 1], get_celltype, cell_mut
+        
+    cell_mut = MutationsInCellType(genome, variants_rsid.df, get_celltype)
+    cell_mut.get_original_input(motif)
+    cell_mut.get_altered_input(motif)
+    ref_exp, alt_exp = cell_mut.predict_expression('rs55705857', 'MYC', 100, 200, inf_model=inf_model)
+    return [cell_type, alt_exp/ref_exp], get_celltype, cell_mut
 
 
 class Mutations(GenomicRegionCollection):
@@ -341,16 +372,7 @@ class CellMutCollection(object):
         self.ckpt_path = model_ckpt_path
         self.working_dir = working_dir
         self.num_workers = num_workers
-
-        self.get_config = load_config(get_config_path)
-        self.get_config.celltype.jacob=False
-        self.get_config.celltype.num_cls=2
-        self.get_config.celltype.input=True
-        self.get_config.celltype.embed=False
-        self.get_config.assets_dir=''
-        self.get_config.s3_file_sys=''
-        self.get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
-        self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
+        self.get_config_path = get_config_path
 
         self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', self.working_dir + "/hg38.fa")
@@ -372,28 +394,17 @@ class CellMutCollection(object):
         return normal_variants
 
     def predict_all_celltype_expression(self):
-        # with get_context("spawn").Pool(processes=self.num_workers) as p:
-        #     result_col = p.map(
-        #         self.predict_celltype_exp, tqdm(self.cell_ids, total=len(self.cell_ids)),
-        #     )
-        # return result_col
-        results = []
-        for cell_id in tqdm(self.cell_ids):
-            results.append(self.predict_celltype_exp(cell_id))
-        return results
-
-    def predict_celltype_exp(self, cell_id):
-        cell_type = self.celltype_annot_dict[cell_id]
-        self.celltype_to_get_celltype[cell_type] = GETCellType(cell_id, self.get_config)
-        if pr(self.celltype_to_get_celltype[cell_type].peak_annot).join(pr(self.variants_rsid.df)).df.empty:
-            return [cell_type, 1]
-            
-        cell_mut = MutationsInCellType(self.genome, self.variants_rsid.df, self.celltype_to_get_celltype[cell_type])
-        cell_mut.get_original_input(self.motif)
-        cell_mut.get_altered_input(self.motif)
-        self.celltype_to_mut_celltype[cell_type] = cell_mut
-        ref_exp, alt_exp = cell_mut.predict_expression('rs55705857', 'MYC', 100, 200, inf_model=self.inf_model)
-        return [cell_type, alt_exp/ref_exp]
+        with get_context("fork").Pool(processes=self.num_workers) as p:
+            exp_col = p.starmap(
+                predict_celltype_exp, tqdm(
+                    zip(self.cell_ids, self.get_config_path, repeat(self.celltype_annot_dict), repeat(self.variants_rsid), repeat(self.genome), repeat(self.motif), repeat(self.inf_model)),
+                    total=len(self.cell_ids)
+                )
+            )
+        # exp_col = []
+        # for cell_id in tqdm(self.cell_ids[:10]):
+        #     exp_col.append(self.predict_celltype_exp(cell_id))
+        return exp_col
 
 
 class SVs(object):
@@ -426,3 +437,4 @@ class SVs(object):
 if __name__=="__main__":
     cell_mut_col = CellMutCollection()
     results = cell_mut_col.predict_all_celltype_expression()
+    breakpoint()
