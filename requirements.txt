@@ -15,11 +15,9 @@ cdt
 pysam
 requests
 seqlogo
-MOODS
-random
+MOODS-python
 urllib3
 pyliftover
-hicstraw
 biopython
 gprofiler
 pyfaidx
