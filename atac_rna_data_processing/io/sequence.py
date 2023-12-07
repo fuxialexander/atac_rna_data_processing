@@ -48,6 +48,8 @@ class DNASequence(Seq):
         Mutate a DNA sequence using biopython
         """
         from Bio.Seq import MutableSeq
+        if type(pos) != int:
+            pos = int(pos)
         if len(alt) == 1:
             seq = MutableSeq(self.seq)
             seq[pos] = alt
