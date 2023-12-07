@@ -89,7 +89,7 @@ class RNA(object):
             cnv = pd.read_csv(cnv_file, sep='\t', header=None)
             cnv.columns = ['Chromosome', 'Start', 'End', 'fc']
             cnv['fc'] = cnv['fc'].apply(lambda x: 2**x)
-            exp = pr(exp).join(pr(cnv), how='left').as_df().fillna(1)
+            exp = pr(exp, int64=True).join(pr(cnv, int64=True), how='left').as_df().fillna(1)
             exp['TPM'] = exp['TPM'] / exp['fc']
             exp = exp.drop(['fc'], axis=1)
             print(exp)
