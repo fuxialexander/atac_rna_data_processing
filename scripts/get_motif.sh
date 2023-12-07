@@ -29,13 +29,13 @@ fi
 
 rm ${SAMPLE}.atac.motif.bed
 rm *chr*
-# Using tabix to extract the archetype motifs in atac peak regions for the given assembly
-# if ${SAMPLE}.atac.motif.bed not exist:
+# # Using tabix to extract the archetype motifs in atac peak regions for the given assembly
+# if ${SAMPLE}.atac.motif.bed not exist, then run the following command
 if [ ! -f ${SAMPLE}.atac.motif.bed ]; then
     tabix -T ${SAMPLE}.atac.bed ${ASSEMBLY}.archetype_motifs.v1.0.bed.gz > ${SAMPLE}.atac.motif.bed
 fi
 
-# Using awk to extract the chromosome and motif information from the bed files
+# # Using awk to extract the chromosome and motif information from the bed files
 awk -v SAMPLE=${SAMPLE} '{OFS="\t"; print $1,$2,$3 > SAMPLE".atac."$1}' ${SAMPLE}.atac.bed
 awk -v SAMPLE=${SAMPLE} '{print > SAMPLE".atac.motif."$1}' ${SAMPLE}.atac.motif.bed
 
@@ -48,4 +48,4 @@ ls ${SAMPLE}.atac.motif.chr* | sed 's/.*motif.//' | parallel --memfree ${MEM} -j
 ls ${SAMPLE}.atac.peak_motif* | sort -k1,1V | xargs cat > ${SAMPLE}.peak_motif.bed
 
 #when the process is finished, we can remove the intermediate files with the following line:
-#rm -rf test.atac*chr*
+# rm -rf test.atac*chr*

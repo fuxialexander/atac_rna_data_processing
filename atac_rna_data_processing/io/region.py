@@ -54,6 +54,18 @@ class Genome(object):
         Get the sequence of the genomic region
         """
         chromosome = self.normalize_chromosome(chromosome)
+        if end > self.chrom_sizes[chromosome]:
+            end = self.chrom_sizes[chromosome]
+            print(
+                f"""The end position {end} is larger than the chromosome size {self.chrom_sizes[chromosome]}
+                The end position is set to the chromosome size"""
+            )
+        if start < 0:
+            start = 0
+            print(
+                f"""The start position {start} is smaller than 0
+                The start position is set to 0"""
+            )
         if strand == "-":
             return DNASequence(
                 self.genome_seq[chromosome][start:end].seq.complement(),
@@ -85,10 +97,10 @@ class Genome(object):
         chromosome = self.normalize_chromosome(chromosome)
         return GenomicRegionCollection(
             self,
-            chromosomes=[chromosome] * ((self.chrom_sizes[chromosome] - tile_size) // step_size + 1),
-            starts=range(0, self.chrom_sizes[chromosome]-tile_size, step_size),
-            ends = [s + tile_size for s in range(0, self.chrom_sizes[chromosome]-tile_size, step_size)],
-            strands=[strand] * ((self.chrom_sizes[chromosome] - tile_size) // step_size + 1),
+            chromosomes=[chromosome] * ((self.chrom_sizes[chromosome] ) // step_size + 1),
+            starts=range(0, self.chrom_sizes[chromosome], step_size),
+            ends = [min(s + tile_size, self.chrom_sizes[chromosome])  for s in range(0, self.chrom_sizes[chromosome], step_size)],
+            strands=[strand] * ((self.chrom_sizes[chromosome]) // step_size + 1),
         )
 
 

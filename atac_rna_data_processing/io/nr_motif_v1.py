@@ -107,7 +107,7 @@ class NrMotifV1(MotifClusterCollection):
             pass
         else:
             print("Downloading PFMs...")
-            os.system("cd {motif_dir} && wget --recursive --no-parent {url}pfm/".format(motif_dir=motif_dir, url=os.path.join(base_url, "pfm"))) 
+            os.system("cd {motif_dir} && wget --recursive --no-parent {url}/".format(motif_dir=motif_dir, url=os.path.join(base_url, "pfm"))) 
         if os.path.exists(motif_dir + "motif_annotations.csv"):
             motif_annotations = pd.read_csv(motif_dir + "motif_annotations.csv")
         else:

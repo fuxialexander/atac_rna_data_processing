@@ -20,8 +20,9 @@ from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 class DNASequence(Seq):
     def __init__(self, seq, header = ''):
         self.header = header
-        self.seq = str(seq).upper()
-        self._data = str(seq).upper()
+        self.seq = str(seq).upper().encode()
+        self._data = str(seq).upper().encode() # convert DNA sequence to upper case and encode from ASCII to bytes
+
         self.one_hot_encoding = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], 'N': [0, 0, 0, 0]}
     
 
@@ -37,11 +38,11 @@ class DNASequence(Seq):
         Pad a DNA sequence
         """
         if target_length == 0:
-            return DNASequence('N' * left + self.seq + 'N' * right, self.header)
+            return DNASequence('N' * left + self.seq.decode() + 'N' * right, self.header)
         elif target_length >= len(self.seq):
-            return DNASequence('N' * left + self.seq + 'N' * (target_length - len(self.seq)- left), self.header)
+            return DNASequence('N' * left + self.seq.decode() + 'N' * (target_length - len(self.seq)- left), self.header)
         elif target_length < len(self.seq):
-            return DNASequence(self.seq[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
+            return DNASequence(self.seq.decode()[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
     
     def mutate(self, pos, alt):
         """
@@ -62,8 +63,7 @@ class DNASequence(Seq):
         """
         Get one-hot encoding of a DNA sequence
         """
-
-        return np.array([self.one_hot_encoding[base] for base in self.seq]).astype(np.int8).reshape(-1, 4)
+        return np.array([self.one_hot_encoding[base] for base in self.seq.decode()]).astype(np.int8).reshape(-1, 4)
 
 class DNASequenceCollection():
     """A collection of DNA sequences objects"""
@@ -186,13 +186,16 @@ class DNASequenceCollection():
             for seq in self.sequences:
                 f.write(seq.seq + '\n')
 
-    def save_zarr(self, filename):
+    def save_zarr(self, filename, chunks = (100, 2000, 4), target_length = 2000):
         """Save the one-hot encoding of a DNASequenceCollection object as a zarr file. Don't use sparse matrix, use compression"""
         # create a list to store the one-hot encoding
         one_hot = []
         
         # loop over the sequences and create a one-hot encoding for each sequence
         for seq in tqdm(self.sequences):
+            # pad the sequence
+            if len(seq.seq) != target_length:
+                seq = seq.padding(left=0, target_length=target_length)
             # create the one-hot encoding
             one_hot.append(seq.one_hot)
         
@@ -200,20 +203,33 @@ class DNASequenceCollection():
         one_hot = np.stack(one_hot).astype(np.int8)
         
         # save the one-hot encoding to a zarr file
-        zarr.save(filename, one_hot, chunks=(100, 2000, 4))
+        zarr.save(filename, one_hot, chunks=chunks)
     
-    def save_zarr_group(self, filename):
-        """Save the one-hot encoding of a DNASequenceCollection object as a zarr file. Don't use sparse matrix, use compression"""
+
+    def save_zarr_group(self, zarr_root, key, chunks=(100, 2000, 4), target_length=2000):
+        """Save the one-hot encoding of a DNASequenceCollection object as a zarr group.
+
+        Args:
+            zarr_root (str): The root directory of the zarr storage.
+            key (str): The key under which the data will be stored in the zarr group.
+            chunks (tuple): The chunk size for zarr storage.
+        """
         # create a list to store the one-hot encoding
         one_hot = []
-        
+
         # loop over the sequences and create a one-hot encoding for each sequence
         for seq in tqdm(self.sequences):
+            # pad the sequence
+            if len(seq.seq) != target_length:
+                seq = seq.padding(left=0, target_length=target_length)
             # create the one-hot encoding
             one_hot.append(seq.one_hot)
         
         # concatenate the one-hot encoding vertically
         one_hot = np.stack(one_hot).astype(np.int8)
         
-        # save the one-hot encoding to a zarr file
-        zarr.save(filename, one_hot, chunks=(100, 2000, 4))
+        # Initialize a zarr group/store at the specified root
+        zarr_group = zarr.open_group(zarr_root, mode='a')
+
+        # save the one-hot encoding to the specified key in the zarr group
+        zarr_group.create_dataset(key, data=one_hot, chunks=chunks, dtype='i1', compressor=zarr.Blosc(cname='zstd', clevel=3))
