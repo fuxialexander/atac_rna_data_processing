@@ -379,6 +379,16 @@ class CellMutCollection(object):
         self.motif = NrMotifV1.load_from_pickle(working_dir + "/NrMotifV1.pkl")
         self.variants_rsid = read_rsid_parallel(self.genome, working_dir + 'myc_rsid.txt', 5)
         self.normal_variants = self.load_normal_filter_normal_variants(variants_path)
+
+        self.get_config = load_config(get_config_path)
+        self.get_config.celltype.jacob=False
+        self.get_config.celltype.num_cls=2
+        self.get_config.celltype.input=True
+        self.get_config.celltype.embed=False
+        self.get_config.assets_dir=''
+        self.get_config.s3_file_sys=''
+        self.get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
+        self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
         
         self.celltype_to_get_celltype = {}
         self.celltype_to_mut_celltype = {}
@@ -392,20 +402,19 @@ class CellMutCollection(object):
         normal_variants = normal_variants.query('Ref.str.len()==1 & Alt.str.len()==1')
         normal_variants['AF'] = normal_variants.Info.transform(lambda x: float(re.findall(r'AF=([0-9e\-\.]+)', x)[0]))
         return normal_variants
-
-    def predict_all_celltype_expression(self):
-        with get_context("fork").Pool(processes=self.num_workers) as p:
-            exp_col = p.starmap(
-                predict_celltype_exp, tqdm(
-                    zip(self.cell_ids, self.get_config_path, repeat(self.celltype_annot_dict), repeat(self.variants_rsid), repeat(self.genome), repeat(self.motif), repeat(self.inf_model)),
-                    total=len(self.cell_ids)
-                )
-            )
-        # exp_col = []
-        # for cell_id in tqdm(self.cell_ids[:10]):
-        #     exp_col.append(self.predict_celltype_exp(cell_id))
-        return exp_col
     
+    def predict_celltype_exp(self, cell_id, motif, inf_model):
+        get_celltype = GETCellType(cell_id, self.get_config)
+        cell_type = self.celltype_annot_dict[cell_id]
+        if pr(get_celltype.peak_annot).join(pr(self.variants_rsid.df)).df.empty:
+            return [cell_type, 1], get_celltype, cell_mut
+            
+        cell_mut = MutationsInCellType(self.genome, self.variants_rsid.df, get_celltype)
+        cell_mut.get_original_input(motif)
+        cell_mut.get_altered_input(motif)
+        ref_exp, alt_exp = cell_mut.predict_expression('rs55705857', 'MYC', 100, 200, inf_model=inf_model)
+        return [cell_type, alt_exp/ref_exp], get_celltype, cell_mut
+
     def generate_motif_diff_df(self, variants_file, save_motif_df=True):
         variants_ref = pd.read_csv(variants_file, sep='\t').set_index('ID').Ref.to_dict() 
         variants_alt = pd.read_csv(variants_file, sep='\t').set_index('ID').Alt.to_dict()
@@ -435,9 +444,11 @@ class CellMutCollection(object):
             motif_diff_df.to_csv('motif_diff_df.csv')
         return ld_map, motif_diff_df
             
-    def get_variant_score(self, motif_diff_score, variant, gene, cell):
+    def get_variant_score(self, variant, gene, cell):
+        variant_df = variants_df.query(f'RSID=="{variant}"').iloc[0]
+        motif_diff_score = self.motif_diff_df.loc[variant]
         motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
-        diff = motif_diff_score.copy().values
+        diff = self.motif_diff_score.copy().values
         diff[(diff<0) & (diff>-10)] = 0
         diff[(diff<0) & (diff<-10)] = -1
         diff[(diff>0) & (diff<10)] = 0
@@ -459,16 +470,22 @@ class CellMutCollection(object):
         combined_score['celltype'] = self.cell_type_annot_dict[cell.celltype]
         return combined_score
 
-    def get_all_variant_scores(self, motif_diff_score_df, celltype_list, gene_list, motif_list):
+    def get_all_variant_scores(self, output_dir, output_name):        
         scores = []
-        for celltype in celltype_list:
-            for gene in gene_list:
-                for motif in motif_list:
-                    score = self.get_variant_score(motif_diff_score_df, celltype, gene, motif)
-                    scores = pd.concat([scores, score])
+        args_col = []
+        for variant in self.variant_list:
+            for gene in self.gene_list:
+                for celltype in self.celltype_list:
+                    args_col.append([self.motif_diff_score_df, variant, gene, celltype])
+        for args in args_col:
+            scores.append(self.get_variant_score(**args))
 
-        scores.reset_index().to_feather("scores.olig.feather")
-        scores.reset_index().to_csv("glioma_scores.olig.csv")
+        scores = pd.DataFrame(scores)
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        scores.reset_index().to_feather(f"{output_dir}/{output_name}.feather")
+        scores.reset_index().to_csv(f"{output_dir}/{output_name}.csv")
         return scores
 
     @staticmethod
@@ -498,17 +515,35 @@ class SVs(object):
         return
 
 
-# class GnomAD:
-#     """
-#     Class to handle downloading of gnomAD data.
-#     """
-
-#     def __init__(self, gnomad_base_url):
-#         self.gnomad_base_url = gnomad_base_url
-#     ``
-
-
 if __name__=="__main__":
-    cell_mut_col = CellMutCollection()
-    results = cell_mut_col.predict_all_celltype_expression()
-    breakpoint()
+    # Configuration files
+    model_ckpt_path = "/manitou/pmg/projects/resources/get_interpret/pretrain_finetune_natac_fetal_adult.pth"
+    get_config_path = "/manitou/pmg/users/xf2217/atac_rna_data_processing/atac_rna_data_processing/config/GET"
+
+    celltype_annot_path = "/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/data/cell_type_pretrain_human_bingren_shendure_apr2023.txt"
+    celltype_data_dir = "/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac/"
+    celltypes_file_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/celltypes.txt"
+
+    normal_variants_path = "/manitou/pmg/users/xf2217/gnomad/myc.tad.vcf.gz"
+    variants_map_path = "/manitou/pmg/users/xf2217/interpret_natac/myc_rsid.txt"
+    variants_file_path = "/manitou/pmg/users/xf2217/interpret_natac/glioma_rsid.txt"
+
+    genes_file_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/genes.txt"
+    num_workers = 10
+
+    output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/"
+    output_name = "debug"
+    
+    cell_mut_col = CellMutCollection(
+        model_ckpt_path=model_ckpt_path,
+        get_config_path=get_config_path,
+        celltype_annot_path=celltype_annot_path,
+        celltype_data_dir=celltype_data_dir,
+        celltypes_file_path=celltypes_file_path,
+        normal_variants_path=normal_variants_path,
+        variants_map_path=variants_map_path,
+        variants_file_path=variants_file_path,
+        genes_file_path=genes_file_path,
+        num_workers=num_workers,
+    )
+    scores = cell_mut_col.get_all_variant_scores()
