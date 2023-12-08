@@ -406,19 +406,19 @@ class CellMutCollection(object):
         #     exp_col.append(self.predict_celltype_exp(cell_id))
         return exp_col
     
-    def generate_motif_diff(self, variants_file, save_motif_df=True):
+    def generate_motif_diff_df(self, variants_file, save_motif_df=True):
         variants_ref = pd.read_csv(variants_file, sep='\t').set_index('ID').Ref.to_dict() 
         variants_alt = pd.read_csv(variants_file, sep='\t').set_index('ID').Alt.to_dict()
         variants_ld = pd.read_csv(variants_file, sep='\t')
 
-        ld = {}
+        ld_map = {}
         lead_snp = ""
         for _, row in variants_ld.iterrows():
             if row['Variant/LD'] == 'variant':
                 lead_snp = row['ID']
-                ld[row['ID']] = row['ID']
+                ld_map[row['ID']] = row['ID']
             else:
-                ld[row['ID']] = lead_snp
+                ld_map[row['ID']] = lead_snp
         
         variants_rsid = variants_rsid.df
         variants_rsid['Ref'] = variants_rsid.RSID.map(variants_ref)
@@ -433,7 +433,7 @@ class CellMutCollection(object):
         
         if save_motif_df:
             motif_diff_df.to_csv('motif_diff_df.csv')
-        return ld, motif_diff_df
+        return ld_map, motif_diff_df
             
     def get_variant_score(self, motif_diff_score, variant, gene, cell):
         motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
@@ -459,6 +459,18 @@ class CellMutCollection(object):
         combined_score['celltype'] = self.cell_type_annot_dict[cell.celltype]
         return combined_score
 
+    def get_all_variant_scores(self, motif_diff_score_df, celltype_list, gene_list, motif_list):
+        scores = []
+        for celltype in celltype_list:
+            for gene in gene_list:
+                for motif in motif_list:
+                    score = self.get_variant_score(motif_diff_score_df, celltype, gene, motif)
+                    scores = pd.concat([scores, score])
+
+        scores.reset_index().to_feather("scores.olig.feather")
+        scores.reset_index().to_csv("glioma_scores.olig.csv")
+        return scores
+
     @staticmethod
     def get_nearby_genes(variant, cell, distance=2000000):
         chrom = variant['Chromosome']
@@ -467,6 +479,7 @@ class CellMutCollection(object):
         end = pos+distance
         genes = cell.gene_annot.query('Chromosome==@chrom & Start>@start & Start<@end')
         return ','.join(np.unique(genes.gene_name.values))
+
 
 class SVs(object):
     """Class to handle SVs
