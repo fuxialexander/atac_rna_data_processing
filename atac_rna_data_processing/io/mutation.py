@@ -405,7 +405,68 @@ class CellMutCollection(object):
         # for cell_id in tqdm(self.cell_ids[:10]):
         #     exp_col.append(self.predict_celltype_exp(cell_id))
         return exp_col
+    
+    def generate_motif_diff(self, variants_file, save_motif_df=True):
+        variants_ref = pd.read_csv(variants_file, sep='\t').set_index('ID').Ref.to_dict() 
+        variants_alt = pd.read_csv(variants_file, sep='\t').set_index('ID').Alt.to_dict()
+        variants_ld = pd.read_csv(variants_file, sep='\t')
 
+        ld = {}
+        lead_snp = ""
+        for _, row in variants_ld.iterrows():
+            if row['Variant/LD'] == 'variant':
+                lead_snp = row['ID']
+                ld[row['ID']] = row['ID']
+            else:
+                ld[row['ID']] = lead_snp
+        
+        variants_rsid = variants_rsid.df
+        variants_rsid['Ref'] = variants_rsid.RSID.map(variants_ref)
+        variants_rsid['Alt'] = variants_rsid.RSID.map(variants_alt)
+        variants_rsid = self.variants_rsid.dropna()
+
+        variants_rsid = Mutations(self.genome, variants_rsid)
+        variants_rsid.collect_ref_sequence()
+        variants_rsid.collect_alt_sequence()
+        motif_diff = variants_rsid.get_motif_diff(self.motif)
+        motif_diff_df = pd.DataFrame((motif_diff['Alt'].values-motif_diff['Ref'].values), index=variants_rsid.df.RSID.values, columns=motif.cluster_names)
+        
+        if save_motif_df:
+            motif_diff_df.to_csv('motif_diff_df.csv')
+        return ld, motif_diff_df
+            
+    def get_variant_score(self, motif_diff_score, variant, gene, cell):
+        motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
+        diff = motif_diff_score.copy().values
+        diff[(diff<0) & (diff>-10)] = 0
+        diff[(diff<0) & (diff<-10)] = -1
+        diff[(diff>0) & (diff<10)] = 0
+        diff[(diff>0) & (diff>10)] = 1
+        
+        combined_score = diff*motif_importance.values
+        combined_score = pd.Series(combined_score, index=motif_diff_score.index.values).sort_values()
+        combined_score = pd.DataFrame(combined_score, columns=['score'])
+        combined_score['gene'] = gene
+        combined_score['variant'] = variant.RSID
+        try:
+            combined_score['ld'] = self.ld[variant.RSID]
+        except:
+            combined_score['ld'] = variant.RSID
+        combined_score['chrom'] = variant.Chromosome
+        combined_score['pos'] = variant.Start
+        combined_score['ref'] = variant.Ref
+        combined_score['alt'] = variant.Alt
+        combined_score['celltype'] = self.cell_type_annot_dict[cell.celltype]
+        return combined_score
+
+    @staticmethod
+    def get_nearby_genes(variant, cell, distance=2000000):
+        chrom = variant['Chromosome']
+        pos = variant['Start']
+        start = pos-distance
+        end = pos+distance
+        genes = cell.gene_annot.query('Chromosome==@chrom & Start>@start & Start<@end')
+        return ','.join(np.unique(genes.gene_name.values))
 
 class SVs(object):
     """Class to handle SVs
