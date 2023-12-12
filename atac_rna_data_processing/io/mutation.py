@@ -391,7 +391,7 @@ class CellMutCollection(object):
         self.normal_variants = self.load_normal_filter_normal_variants(normal_variants_path)
 
         self.get_config = load_config(get_config_path)
-        self.get_config.celltype.jacob=False
+        self.get_config.celltype.jacob=True
         self.get_config.celltype.num_cls=2
         self.get_config.celltype.input=True
         self.get_config.celltype.embed=False
@@ -444,11 +444,8 @@ class CellMutCollection(object):
         variants_rsid['Ref'] = variants_rsid.RSID.map(variants_ref)
         variants_rsid['Alt'] = variants_rsid.RSID.map(variants_alt)
         variants_rsid = variants_rsid.dropna()
-
         variants_rsid = Mutations(self.genome, variants_rsid)
-        variants_rsid.collect_ref_sequence()
-        variants_rsid.collect_alt_sequence()
-        motif_diff = self.variants_rsid.get_motif_diff(self.motif)
+        motif_diff = variants_rsid.get_motif_diff(self.motif)
         motif_diff_df = pd.DataFrame((motif_diff['Alt'].values-motif_diff['Ref'].values), index=variants_rsid.df.RSID.values, columns=self.motif.cluster_names)
         
         if save_motif_df:
@@ -460,7 +457,7 @@ class CellMutCollection(object):
         motif_diff_score = self.motif_diff_df.loc[variant]
         cell = GETCellType(cell, self.get_config)
         motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
-        diff = self.motif_diff_score.copy().values
+        diff = motif_diff_score.copy().values
         diff[(diff<0) & (diff>-10)] = 0
         diff[(diff<0) & (diff<-10)] = -1
         diff[(diff>0) & (diff<10)] = 0
@@ -479,7 +476,9 @@ class CellMutCollection(object):
         combined_score['pos'] = variant_df.Start
         combined_score['ref'] = variant_df.Ref
         combined_score['alt'] = variant_df.Alt
-        combined_score['celltype'] = self.cell_type_annot_dict[cell.celltype]
+        combined_score['celltype'] = self.celltype_annot_dict[cell.celltype]
+        combined_score['diff'] = diff
+        combined_score['motif_importance'] = motif_importance.values
         return combined_score
 
     def get_all_variant_scores(self, output_name):        
@@ -489,11 +488,10 @@ class CellMutCollection(object):
             for gene in self.genes_list:
                 for celltype in self.celltypes_list:
                     args_col.append([variant, gene, celltype])
-        for args in args_col:
+        for args in tqdm(args_col):
             scores.append(self.get_variant_score(*args))
 
-        scores = pd.DataFrame(scores)
-
+        scores = pd.concat(scores, axis=0)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         scores.reset_index().to_feather(f"{output_dir}/{output_name}.feather")
