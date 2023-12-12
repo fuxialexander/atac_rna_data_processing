@@ -10,6 +10,7 @@ import requests
 from pysam import VariantFile
 from tqdm import tqdm
 
+import torch
 import os
 import tabix
 import concurrent.futures
@@ -301,12 +302,7 @@ class MutationsInCellType(object):
         tuple: A tuple containing expression predictions for the original and altered states.
         """
         # Calculate new motif
-        import torch
         if inf_model is None:
-            import sys
-            sys.path.append('/manitou/pmg/users/xf2217/get_model/')
-            from inference import InferenceModel
-            import torch
             checkpoint_path = '/manitou/pmg/projects/resources/get_interpret/pretrain_finetune_natac_fetal_adult.pth'
             inf_model = InferenceModel(checkpoint_path, 'cuda')
 
