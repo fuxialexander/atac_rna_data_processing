@@ -20,9 +20,10 @@ celltype_dir = "/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_na
 normal_variants_path = "/manitou/pmg/users/xf2217/gnomad/myc.tad.vcf.gz" # gnomAD normal variants
 variants_map_path = "/manitou/pmg/users/xf2217/interpret_natac/glioma_variants.txt" # Variants with LD variants
 
-celltype_path = None # Cell types of interest
+# celltype_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/celltypes.txt" # Cell types of interest
+celltype_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/celltypes.txt"
 variants_path = "/manitou/pmg/users/xf2217/interpret_natac/myc_rsid.txt" # Variants of interest
-genes_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/genes.txt" # Genes of interest
+genes_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/genes.txt" # Genes of interest
 
 output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/" # Output directory
 output_name = "glioma" # Experiment name
