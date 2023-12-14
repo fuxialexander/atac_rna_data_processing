@@ -372,6 +372,9 @@ class CellMutCollection(object):
         self.celltype_annot_dict = celltype_annot.set_index('id').celltype.to_dict()
         if celltype_path is None:
             self.celltypes_list = [os.path.basename(cell_path) for cell_path in sorted(glob(celltype_dir))]
+        else:
+            with open(celltype_path, "r") as f:
+                self.celltypes_list = f.read().splitlines()
         with open(genes_path, "r") as f:
             self.genes_list = f.read().splitlines() 
         with open(variants_path, "r") as f:
@@ -490,10 +493,10 @@ class CellMutCollection(object):
             scores.append(self.get_variant_score(*args))
 
         scores = pd.concat(scores, axis=0)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        scores.reset_index().to_feather(f"{output_dir}/{output_name}.feather")
-        scores.reset_index().to_csv(f"{output_dir}/{output_name}.csv")
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        scores.reset_index().to_feather(f"{self.output_dir}/{output_name}.feather")
+        scores.reset_index().to_csv(f"{self.output_dir}/{output_name}.csv")
         return scores
 
     @staticmethod
