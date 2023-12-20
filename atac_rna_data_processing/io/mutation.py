@@ -132,10 +132,9 @@ def fetch_rsid_data(server, rsid, max_retries=5):
             else:
                 raise err
 
-def read_rsid_parallel(genome, rsid_file, num_workers=10):
+def read_rsid_parallel(genome, rsid_list, num_workers=10):
     """Read VCF file, only support hg38
     """
-    rsid_list = np.loadtxt(rsid_file, dtype=str)
     server = "http://rest.ensembl.org"
     df = []
 
@@ -361,7 +360,6 @@ class CellMutCollection(object):
             celltype_dir,
             celltype_path,
             normal_variants_path,
-            variants_map_path,
             variants_path,
             genes_path,
             output_dir,
@@ -374,11 +372,9 @@ class CellMutCollection(object):
             self.celltypes_list = [os.path.basename(cell_path) for cell_path in sorted(glob(celltype_dir))]
         else:
             with open(celltype_path, "r") as f:
-                self.celltypes_list = f.read().splitlines()
+                self.celltypes_list = f.read().strip().splitlines()
         with open(genes_path, "r") as f:
-            self.genes_list = f.read().splitlines() 
-        with open(variants_path, "r") as f:
-            self.variants_list = f.read().splitlines()
+            self.genes_list = f.read().strip().splitlines() 
 
         self.ckpt_path = model_ckpt_path
         self.num_workers = num_workers
@@ -387,8 +383,9 @@ class CellMutCollection(object):
         self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
-        self.variants_rsid = read_rsid_parallel(self.genome, variants_path, 5) 
-        self.variants_map_path = variants_map_path
+        self.variants_map_path = variants_path
+        self.variants_list = list(set(pd.read_csv(variants_path, sep='\t')["ID"].to_list()))
+        self.variants_rsid = read_rsid_parallel(self.genome, self.variants_list)
         self.normal_variants = self.load_normal_filter_normal_variants(normal_variants_path)
 
         self.get_config = load_config(get_config_path)
