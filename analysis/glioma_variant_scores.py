@@ -17,13 +17,10 @@ get_config_path = "/manitou/pmg/users/xf2217/atac_rna_data_processing/atac_rna_d
 celltype_annot_path = "/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/data/cell_type_pretrain_human_bingren_shendure_apr2023.txt" # cell type mapping
 celltype_dir = "/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac/*" # If celltype list not provided, use this directory of all cell types
 
+celltype_path = "/manitou/pmg/users/alb2281/glioma/celltypes.txt"
+variants_path = "/manitou/pmg/users/alb2281/glioma/glioma_variants.txt" # Variants of interest
+genes_path = "/manitou/pmg/users/alb2281/glioma/genes.txt" # Genes of interest
 normal_variants_path = "/manitou/pmg/users/xf2217/gnomad/myc.tad.vcf.gz" # gnomAD normal variants
-variants_map_path = "/manitou/pmg/users/xf2217/interpret_natac/glioma_variants.txt" # Variants with LD variants
-
-# celltype_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/celltypes.txt" # Cell types of interest
-celltype_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/celltypes.txt"
-variants_path = "/manitou/pmg/users/xf2217/interpret_natac/myc_rsid.txt" # Variants of interest
-genes_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/genes.txt" # Genes of interest
 
 output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/" # Output directory
 output_name = "glioma" # Experiment name
@@ -39,7 +36,6 @@ cell_mut_col = CellMutCollection(
     celltype_dir=celltype_dir,
     celltype_path=celltype_path,
     normal_variants_path=normal_variants_path,
-    variants_map_path=variants_map_path,
     variants_path=variants_path,
     genes_path=genes_path,
     output_dir=output_dir,
