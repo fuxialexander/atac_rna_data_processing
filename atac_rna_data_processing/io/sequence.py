@@ -20,12 +20,14 @@ from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 class DNASequence(Seq):
     def __init__(self, seq, header = ''):
         self.header = header
-        self.seq = str(seq).upper().encode()
-        self._data = str(seq).upper().encode() # convert DNA sequence to upper case and encode from ASCII to bytes
+        self.seq = str(seq).upper()
+        self._data = str(seq).upper() # convert DNA sequence to upper case and encode from ASCII to bytes
 
         self.one_hot_encoding = {'A': [1, 0, 0, 0], 'C': [0, 1, 0, 0], 'G': [0, 0, 1, 0], 'T': [0, 0, 0, 1], 'N': [0, 0, 0, 0]}
-    
 
+    def __repr__(self):
+        return self.header
+    
     def get_reverse_complement(self):
         """
         Get the reverse complement of a DNA sequence
@@ -38,11 +40,11 @@ class DNASequence(Seq):
         Pad a DNA sequence
         """
         if target_length == 0:
-            return DNASequence('N' * left + self.seq.decode() + 'N' * right, self.header)
+            return DNASequence('N' * left + self.seq + 'N' * right, self.header)
         elif target_length >= len(self.seq):
-            return DNASequence('N' * left + self.seq.decode() + 'N' * (target_length - len(self.seq)- left), self.header)
+            return DNASequence('N' * left + self.seq + 'N' * (target_length - len(self.seq)- left), self.header)
         elif target_length < len(self.seq):
-            return DNASequence(self.seq.decode()[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
+            return DNASequence(self.seq[(len(self.seq) - target_length) // 2:(len(self.seq) + target_length) // 2], self.header)
     
     def mutate(self, pos, alt):
         """
@@ -65,7 +67,7 @@ class DNASequence(Seq):
         """
         Get one-hot encoding of a DNA sequence
         """
-        return np.array([self.one_hot_encoding[base] for base in self.seq.decode()]).astype(np.int8).reshape(-1, 4)
+        return np.array([self.one_hot_encoding[base] for base in self.seq]).astype(np.int8).reshape(-1, 4)
 
     def save_zarr(self, zarr_file_path, 
               included_chromosomes=['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7',
