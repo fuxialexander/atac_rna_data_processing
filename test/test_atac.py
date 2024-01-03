@@ -8,7 +8,8 @@ sys.path.append('..')
 # %%To import the object ATAC from the script atac.py
 from atac_rna_data_processing.io.atac import ATAC
 # %%
-atac = ATAC('test', 'hg38', tf_list="../human/tf_list.txt", scanned_motif=True)
+from atac_rna_data_processing.io.gencode import Gencode
+atac = ATAC('../human/k562_overlap/k562_overlap', 'hg38', tf_list="../human/tf_list.txt", scanned_motif=True)
 # %%Exports the data to a YAML file, a csv file and a npz file,
 atac.export_data()
 
@@ -16,4 +17,9 @@ atac.export_data()
 atac.export_data_to_zarr()
 
 
+# %%
+from scipy.sparse import load_npz
+load_npz('../human/k562/k562_dnase.natac.npz')
+# %%
+atac.motif_data
 # %%

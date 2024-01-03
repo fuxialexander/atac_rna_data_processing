@@ -18,7 +18,6 @@ class ZarrGenome:
 
     Methods:
         __getitem__(chr, key): Returns a slice of the genome sequence for a given chromosome.
-        get_motif_scores(chr, regions): Returns motif scores for specified regions in a chromosome.
     """
 
     def __init__(self, zarr_file_path, model_path):
@@ -31,24 +30,6 @@ class ZarrGenome:
         """
         self.zarr_file_path = zarr_file_path
         self.genome_data = zarr.load(zarr_file_path)
-        self.model = self._load_model(model_path)
-
-    def _load_model(self, model_path):
-        """
-        Loads the MotifScanner model from the specified path.
-
-        Args:
-            model_path (str): Path to the trained model.
-
-        Returns:
-            MotifScanner: Loaded model.
-        """
-        model = MotifScanner()
-        model.load_state_dict(torch.load(model_path))
-        model.eval()
-        model.requires_grad_(False)
-        model.cuda()
-        return torch.compile(model)
 
     def __getitem__(self, chr, key):
         """
@@ -63,22 +44,3 @@ class ZarrGenome:
         """
         return self.genome_data[chr][key]
 
-    def get_motif_scores(self, chr, regions):
-        """
-        Returns motif scores for specified regions in a chromosome.
-
-        Args:
-            chr (str): Chromosome identifier.
-            regions (list of tuples): List of (start, end) tuples defining regions.
-
-        Returns:
-            ndarray: Motif scores for the specified regions.
-        """
-        results = []
-        with autocast():
-            for start, end in regions:
-                sequence = torch.Tensor(self.genome_data[chr][0][start:end]).unsqueeze(0).cuda()
-                sequence.requires_grad_(False)
-                score = self.model(sequence)
-                results.append(score.cpu().detach().numpy())
-        return np.array(results)

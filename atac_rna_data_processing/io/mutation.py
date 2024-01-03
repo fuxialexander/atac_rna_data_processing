@@ -114,6 +114,22 @@ def read_vcf(self):
     return
 
 
+def prepare_gnomad_data(gnomad_path='/manitou/pmg/users/xf2217/gnomad/',
+                        gnomad_base_url='https://gnomad-public-us-east-1.s3.amazonaws.com/release/4.0/vcf/genomes/'):
+    """
+    Download tabix index for gnomad data
+    """
+    for chrom in list(range(1, 23)) + ['X', 'Y']:
+        chrom = f'chr{chrom}'
+        print(f'Downloading {chrom}...')
+        r = requests.get(gnomad_base_url + f'gnomad.genomes.v4.0.sites.{chrom}.vcf.bgz.tbi')
+        with open(gnomad_path + chrom + '.vcf.bgz.tbi', 'wb') as f:
+            f.write(r.content)
+
+    return
+
+
+
 def fetch_rsid_data(server, rsid, max_retries=5):
     """Fetch RSID data with retry mechanism for rate limiting."""
     ext = f"/variation/human/{rsid}?"
@@ -329,10 +345,10 @@ class MutationsInCellType(object):
         original_matrix[:, 282] = 1
 
         # Process altered matrix
-        # idx_altered = self.mut.df.query('RSID==@rsid').values[0][0] - start
-        # print(idx_altered)
+        idx_altered = self.mut.df.query('RSID==@rsid').values[0][0] - start
+        print(idx_altered)
         altered_matrix = original_matrix.copy()
-        altered_matrix[:, 0:282] = new_motif * altered_matrix[:, 0:282]
+        altered_matrix[idx_altered, 0:282] = new_motif * altered_matrix[idx_altered, 0:282]
 
         # Create tensors for prediction
         original = torch.Tensor(original_matrix).unsqueeze(0).to(inf_model.device)
@@ -359,10 +375,11 @@ class CellMutCollection(object):
             self,
             celltype_annot_path="/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/data/cell_type_pretrain_human_bingren_shendure_apr2023.txt",
             model_ckpt_path="/manitou/pmg/projects/resources/get_interpret/pretrain_finetune_natac_fetal_adult.pth",
-            variants_path="/manitou/pmg/users/xf2217/gnomad/myc.tad.vcf.gz",
+            control_variants_path="/manitou/pmg/users/xf2217/gnomad/myc.tad.vcf.gz",
             celltype_path="/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac/",
             get_config_path="/manitou/pmg/users/xf2217/atac_rna_data_processing/atac_rna_data_processing/config/GET",
             working_dir="/manitou/pmg/users/xf2217/interpret_natac/",
+            device='cuda',
             num_workers=10,
         ):
         celltype_annot = pd.read_csv(celltype_annot_path)
@@ -374,11 +391,11 @@ class CellMutCollection(object):
         self.num_workers = num_workers
         self.get_config_path = get_config_path
 
-        self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
+        self.inf_model = InferenceModel(self.ckpt_path, device)
         self.genome = Genome('hg38', self.working_dir + "/hg38.fa")
         self.motif = NrMotifV1.load_from_pickle(working_dir + "/NrMotifV1.pkl")
         self.variants_rsid = read_rsid_parallel(self.genome, working_dir + 'myc_rsid.txt', 5)
-        self.normal_variants = self.load_normal_filter_normal_variants(variants_path)
+        self.normal_variants = self.load_normal_filter_normal_variants(control_variants_path)
         
         self.celltype_to_get_celltype = {}
         self.celltype_to_mut_celltype = {}

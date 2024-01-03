@@ -67,6 +67,27 @@ class DNASequence(Seq):
         """
         return np.array([self.one_hot_encoding[base] for base in self.seq.decode()]).astype(np.int8).reshape(-1, 4)
 
+    def save_zarr(self, zarr_file_path, 
+              included_chromosomes=['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7',
+                                    'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13',
+                                    'chr14', 'chr15', 'chr16', 'chr17', 'chr18', 'chr19',
+                                    'chr20', 'chr21', 'chr22', 'chrX', 'chrY']
+              ):
+        """
+        Save the genome sequence data in Zarr format.
+        
+        Args:
+            zarr_file_path (str): Path to the Zarr file containing genome data.
+            included_chromosomes (list): List of chromosomes to be included in the Zarr file.
+        """
+        zarr_file = zarr.open_group(zarr_file_path, 'w')
+        for chr in tqdm(included_chromosomes):
+            data = self.get_sequence(chr, 0, self.chrom_sizes[chr]).one_hot
+            zarr_file.create_dataset(chr, data=data, chunks=(2000000, 4), 
+                                    dtype='i4',
+                                    compressor=zarr.Blosc(cname='zstd', clevel=3, shuffle=2))
+        return
+
 class DNASequenceCollection():
     """A collection of DNA sequences objects"""
     def __init__(self, sequences):

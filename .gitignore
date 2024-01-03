@@ -44,3 +44,11 @@ human
 human/check_pretrain.py
 check_pretrain.py
 build
+test/chr22.zarr.zip
+test/consensus_pwms.meme
+test/gencode.v40.hg38.feather
+test/k562_cnv.bed
+test/k562_encode_rsem.tsv
+test/k562_overlap.bed
+test/test.promoter_atac.feather
+gencode.v40.hg38.feather
