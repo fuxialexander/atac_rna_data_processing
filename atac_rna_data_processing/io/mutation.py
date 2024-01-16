@@ -466,7 +466,8 @@ class CellMutCollection(object):
             motif_diff_df.to_csv(os.path.join(self.output_dir, 'motif_diff_df.csv'))
         return ld_map, motif_diff_df
             
-    def get_variant_score(self, variant, gene, cell):
+    def get_variant_score(self, args_tuple):
+        variant, gene, cell = args_tuple
         variant_df = self.variants_rsid.df.query(f'RSID=="{variant}"').iloc[0]
         motif_diff_score = self.motif_diff_df.loc[variant]
         cell = GETCellType(cell, self.get_config)
@@ -502,8 +503,12 @@ class CellMutCollection(object):
             for gene in self.genes_list:
                 for celltype in self.celltypes_list:
                     args_col.append([variant, gene, celltype])
-        for args in tqdm(args_col):
-            scores.append(self.get_variant_score(*args))
+                            
+        scores = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            future_to_score = {executor.submit(self.get_variant_score, args_tuple): args_tuple for args_tuple in args_col}
+            for future in concurrent.futures.as_completed(future_to_score):
+                scores.append(future.result())
 
         scores = pd.concat(scores, axis=0)
         if not os.path.exists(self.output_dir):

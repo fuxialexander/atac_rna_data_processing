@@ -1,7 +1,7 @@
 import zarr
 import torch
 import numpy as np
-from get_model.model import MotifScanner
+from get_model.model.model import MotifScanner
 from torch.cuda.amp import autocast
 
 class ZarrGenome:
