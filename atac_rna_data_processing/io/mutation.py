@@ -153,11 +153,18 @@ def read_rsid_parallel(genome, rsid_list, num_workers=10):
     """
     server = "http://rest.ensembl.org"
     df = []
-
+    
+    processed_rsids = []
+    failed_rsids = []
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
         future_to_rsid = {executor.submit(fetch_rsid_data, server, rsid): rsid for rsid in tqdm(rsid_list)}
         for future in concurrent.futures.as_completed(future_to_rsid):
-            df.append(future.result())
+            try: 
+                df.append(future.result())
+                processed_rsids.append(future_to_rsid[future])
+            except:
+                failed_rsids.append(future_to_rsid[future])
 
     df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
     df['Start'] = df['start']-1
@@ -166,7 +173,9 @@ def read_rsid_parallel(genome, rsid_list, num_workers=10):
     df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
     df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
 
-    return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']])
+    print(f"Failed rsids: {failed_rsids}")
+
+    return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids
 
 def read_rsid(genome, rsid_file):
     """Read VCF file, only support hg38
@@ -375,9 +384,7 @@ class CellMutCollection(object):
             celltype_annot_path,
             celltype_dir,
             celltype_path,
-            normal_variants_path,
             variants_path,
-            genes_path,
             output_dir,
             num_workers,
         ):
@@ -389,8 +396,6 @@ class CellMutCollection(object):
         else:
             with open(celltype_path, "r") as f:
                 self.celltypes_list = f.read().strip().splitlines()
-        with open(genes_path, "r") as f:
-            self.genes_list = f.read().strip().splitlines() 
 
         self.ckpt_path = model_ckpt_path
         self.num_workers = num_workers
@@ -400,9 +405,9 @@ class CellMutCollection(object):
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
         self.variants_map_path = variants_path
-        self.variants_list = list(set(pd.read_csv(variants_path, sep='\t')["ID"].to_list()))
-        self.variants_rsid = read_rsid_parallel(self.genome, self.variants_list)
-        self.normal_variants = self.load_normal_filter_normal_variants(normal_variants_path)
+        variants_list, self.variants_map, self.variant_to_nearest_gene = self.process_variants_file()
+        self.variants_rsid, self.variants_list = read_rsid_parallel(self.genome, variants_list)
+        self.variant_to_nearest_gene = {rsid: gene for rsid, gene in self.variant_to_nearest_gene.items() if rsid in self.variants_list}
 
         self.get_config = load_config(get_config_path)
         self.get_config.celltype.jacob=True
@@ -413,10 +418,18 @@ class CellMutCollection(object):
         self.get_config.s3_file_sys=''
         self.get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
         self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
-        self.ld_map, self.motif_diff_df = self.generate_motif_diff_df(save_motif_df=True)
+        self.motif_diff_df = self.generate_motif_diff_df(save_motif_df=True)
         
         self.celltype_to_get_celltype = {}
         self.celltype_to_mut_celltype = {}
+
+    def process_variants_file(self):
+        variants_df = pd.read_csv(self.variants_map_path)
+        variants_df = variants_df.drop(columns=["Unnamed: 6"]) # drop empty column
+        variants_df = variants_df.dropna(subset=["rsids"]) # drop rows without rsid
+        variant_to_nearest_gene = variants_df.set_index("rsids")["nearest_genes"].to_dict()
+        variant_list = variants_df["rsids"].values.tolist()
+        return variant_list, variants_df, variant_to_nearest_gene
     
     def load_normal_filter_normal_variants(self, normal_variants_path):
         normal_variants = pd.read_csv(normal_variants_path, sep='\t', comment='#', header=None)
@@ -441,19 +454,8 @@ class CellMutCollection(object):
         return [cell_type, alt_exp/ref_exp], get_celltype, cell_mut
 
     def generate_motif_diff_df(self, save_motif_df=True):
-        variants_ref = pd.read_csv(self.variants_map_path, sep='\t').set_index('ID').Ref.to_dict() 
-        variants_alt = pd.read_csv(self.variants_map_path, sep='\t').set_index('ID').Alt.to_dict()
-        variants_ld = pd.read_csv(self.variants_map_path, sep='\t')
-
-        ld_map = {}
-        lead_snp = ""
-        for _, row in variants_ld.iterrows():
-            if row['Variant/LD'] == 'variant':
-                lead_snp = row['ID']
-                ld_map[row['ID']] = row['ID']
-            else:
-                ld_map[row['ID']] = lead_snp
-        
+        variants_ref = self.variants_map.set_index('rsids').ref.to_dict() 
+        variants_alt = self.variants_map.set_index('rsids').alt.to_dict() 
         variants_rsid = self.variants_rsid.df
         variants_rsid['Ref'] = variants_rsid.RSID.map(variants_ref)
         variants_rsid['Alt'] = variants_rsid.RSID.map(variants_alt)
@@ -464,7 +466,7 @@ class CellMutCollection(object):
         
         if save_motif_df:
             motif_diff_df.to_csv(os.path.join(self.output_dir, 'motif_diff_df.csv'))
-        return ld_map, motif_diff_df
+        return motif_diff_df
             
     def get_variant_score(self, args_tuple):
         variant, gene, cell = args_tuple
@@ -472,6 +474,7 @@ class CellMutCollection(object):
         motif_diff_score = self.motif_diff_df.loc[variant]
         cell = GETCellType(cell, self.get_config)
         motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
+
         diff = motif_diff_score.copy().values
         diff[(diff<0) & (diff>-10)] = 0
         diff[(diff<0) & (diff<-10)] = -1
@@ -499,17 +502,23 @@ class CellMutCollection(object):
     def get_all_variant_scores(self, output_name):        
         scores = []
         args_col = []
-        for variant in self.variants_list:
-            for gene in self.genes_list:
-                for celltype in self.celltypes_list:
+        for celltype in self.celltypes_list:
+            for variant, gene in self.variant_to_nearest_gene.items():
                     args_col.append([variant, gene, celltype])
-                            
+        
+        breakpoint()
         scores = []
+        failed_args = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
             future_to_score = {executor.submit(self.get_variant_score, args_tuple): args_tuple for args_tuple in args_col}
             for future in concurrent.futures.as_completed(future_to_score):
-                scores.append(future.result())
+                try:
+                    scores.append(future.result())
+                except:
+                    failed_args.append(future_to_score[future])
 
+        print(failed_args)
+        breakpoint()
         scores = pd.concat(scores, axis=0)
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
