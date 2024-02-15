@@ -557,7 +557,7 @@ class CellMutCollection(object):
         genes = cell.gene_annot.query('Chromosome==@chrom & Start>@start & Start<@end')
         return ','.join(np.unique(genes.gene_name.values))
 
-    def get_nearby_variants(self, variant, distance=20):
+    def get_nearby_variants(self, variant, distance=2000):
         chrom = self.variants_rsid.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variants_rsid.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variants_rsid.df.query(f'RSID=="{variant}"')["End"].values[0] + distance

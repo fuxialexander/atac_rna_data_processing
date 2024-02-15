@@ -42,7 +42,7 @@ celltype_dir = "/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_na
 celltype_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/celltypes.txt"
 variants_path = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/input/MDS_AML_variants_genes_list.csv" # Genes of interest
 
-output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/output/aml-mds" # Output directory
+output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/analysis/output/aml-mds-full" # Output directory
 output_name = "mds-aml-full" # Experiment name
 num_workers = 47 # Number of workers for parallelization
 
