@@ -168,14 +168,16 @@ def read_rsid_parallel(genome, rsid_list, num_workers=10):
             except:
                 failed_rsids.append(future_to_rsid[future])
 
-    df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
-    df['Start'] = df['start']-1
-    df['End'] = df['start']
-    df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
-    df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
-    df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
-
-    return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids
+    if len(df) > 0:
+        df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
+        df['Start'] = df['start']-1
+        df['End'] = df['start']
+        df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
+        df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
+        df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
+        return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids
+    else:
+        return Mutations(genome, None), processed_rsids, failed_rsids
 
 def read_rsid(genome, rsid_file):
     """Read VCF file, only support hg38
@@ -240,8 +242,9 @@ class Mutations(GenomicRegionCollection):
 
     def __init__(self, genome, df):
         super().__init__(genome, df)
-        self.collect_ref_sequence(30,30)
-        self.collect_alt_sequence(30,30)
+        if df is not None:
+            self.collect_ref_sequence(30,30)
+            self.collect_alt_sequence(30,30)
         return
 
     def collect_ref_sequence(self, upstream=0, downstream=0):

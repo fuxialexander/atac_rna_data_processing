@@ -47,7 +47,7 @@ motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
 output_name = "gbm-full" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
-num_workers = 96 # number of parallel workers
+num_workers = 80 # number of parallel workers
 
 cell_mut_col = CellMutCollection(
     model_ckpt_path,
