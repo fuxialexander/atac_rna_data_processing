@@ -1,6 +1,6 @@
 import os
 
-# import gradio as gr
+import gradio as gr
 import matplotlib.pyplot as plt
 import networkx as nx
 import networkx.algorithms.community as nxcom

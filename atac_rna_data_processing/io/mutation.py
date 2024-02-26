@@ -24,6 +24,7 @@ import numpy as np
 from subprocess import Popen, PIPE
 import subprocess
 from multiprocessing import Pool, get_context
+import gradio as gr
 
 from atac_rna_data_processing.config.load_config import load_config
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
@@ -115,7 +116,8 @@ def read_vcf(self):
     return
 
 
-def prepare_gnomad_data(gnomad_path='/manitou/pmg/users/xf2217/gnomad/',
+# e.g. https://gnomad-public-us-east-1.s3.amazonaws.com/release/4.0/vcf/genomes/gnomad.genomes.v4.0.sites.chr1.vcf.bgz
+def prepare_gnomad_data(gnomad_path='/pmglocal/alb2281/get_data/gnomad',
                         gnomad_base_url='https://gnomad-public-us-east-1.s3.amazonaws.com/release/4.0/vcf/genomes/'):
     """
     Download tabix index for gnomad data
@@ -153,20 +155,29 @@ def read_rsid_parallel(genome, rsid_list, num_workers=10):
     """
     server = "http://rest.ensembl.org"
     df = []
-
+    
+    processed_rsids = []
+    failed_rsids = []
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
         future_to_rsid = {executor.submit(fetch_rsid_data, server, rsid): rsid for rsid in tqdm(rsid_list)}
         for future in concurrent.futures.as_completed(future_to_rsid):
-            df.append(future.result())
+            try: 
+                df.append(future.result())
+                processed_rsids.append(future_to_rsid[future])
+            except:
+                failed_rsids.append(future_to_rsid[future])
 
-    df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
-    df['Start'] = df['start']-1
-    df['End'] = df['start']
-    df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
-    df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
-    df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
-
-    return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']])
+    if len(df) > 0:
+        df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
+        df['Start'] = df['start']-1
+        df['End'] = df['start']
+        df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
+        df['Ref'] = df.allele_string.apply(lambda x: x.split('/')[0])
+        df['Alt'] = df.allele_string.apply(lambda x: x.split('/')[1])
+        return Mutations(genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids
+    else:
+        return Mutations(genome, None), processed_rsids, failed_rsids
 
 def read_rsid(genome, rsid_file):
     """Read VCF file, only support hg38
@@ -231,8 +242,9 @@ class Mutations(GenomicRegionCollection):
 
     def __init__(self, genome, df):
         super().__init__(genome, df)
-        self.collect_ref_sequence(30,30)
-        self.collect_alt_sequence(30,30)
+        if df is not None:
+            self.collect_ref_sequence(30,30)
+            self.collect_alt_sequence(30,30)
         return
 
     def collect_ref_sequence(self, upstream=0, downstream=0):
@@ -373,24 +385,16 @@ class CellMutCollection(object):
             genome_path,
             motif_path,
             celltype_annot_path,
-            celltype_dir,
-            celltype_path,
-            normal_variants_path,
-            variants_path,
-            genes_path,
+            celltype_list,
+            variant_list,
+            variant_to_genes,
             output_dir,
             num_workers,
+            debug=False,
         ):
         self.output_dir = output_dir
         celltype_annot = pd.read_csv(celltype_annot_path)
         self.celltype_annot_dict = celltype_annot.set_index('id').celltype.to_dict()
-        if celltype_path is None:
-            self.celltypes_list = [os.path.basename(cell_path) for cell_path in sorted(glob(celltype_dir))]
-        else:
-            with open(celltype_path, "r") as f:
-                self.celltypes_list = f.read().strip().splitlines()
-        with open(genes_path, "r") as f:
-            self.genes_list = f.read().strip().splitlines() 
 
         self.ckpt_path = model_ckpt_path
         self.num_workers = num_workers
@@ -399,11 +403,8 @@ class CellMutCollection(object):
         self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
-        self.variants_map_path = variants_path
-        self.variants_list = list(set(pd.read_csv(variants_path, sep='\t')["ID"].to_list()))
-        self.variants_rsid = read_rsid_parallel(self.genome, self.variants_list)
-        self.normal_variants = self.load_normal_filter_normal_variants(normal_variants_path)
-
+        self.debug = debug
+        
         self.get_config = load_config(get_config_path)
         self.get_config.celltype.jacob=True
         self.get_config.celltype.num_cls=2
@@ -411,13 +412,52 @@ class CellMutCollection(object):
         self.get_config.celltype.embed=False
         self.get_config.assets_dir=''
         self.get_config.s3_file_sys=''
-        self.get_config.celltype.data_dir = '/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
+        self.get_config.celltype.data_dir ='/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
         self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
-        self.ld_map, self.motif_diff_df = self.generate_motif_diff_df(save_motif_df=True)
+
+        if self.debug:
+            variant_list = variant_list[:2]
+            celltype_list = celltype_list[:2]
+
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            os.makedirs(f"{self.output_dir}/csv")
+            os.makedirs(f"{self.output_dir}/feather")
+            os.makedirs(f"{self.output_dir}/logs")
         
-        self.celltype_to_get_celltype = {}
-        self.celltype_to_mut_celltype = {}
-    
+        self.celltype_list = celltype_list
+        self.celltype_cache = {}
+        self.jacobian_cache = {}
+        self.variant_muts, self.variant_list, self.failed_rsids = read_rsid_parallel(self.genome, variant_list, num_workers=self.num_workers)
+        self.variant_to_genes = self.filter_variant_to_genes_map(variant_to_genes)
+        self.variant_to_normal_variants = {}
+        
+        all_variant_mut_df_col = [self.variant_muts.df]
+        all_failed_variant_list = []
+        for rsid in self.variant_list:
+            normal_variants_muts, processed_normal_variants, failed_normal_variants = self.get_nearby_variants(rsid)
+            all_variant_mut_df_col.append(normal_variants_muts.df)
+            self.variant_to_normal_variants[rsid] = processed_normal_variants
+            all_failed_variant_list += failed_normal_variants
+            
+        self.all_variant_mut_df = pd.concat(all_variant_mut_df_col, ignore_index=True).drop_duplicates()
+        self.all_failed_variant_list = list(set(all_failed_variant_list))
+        self.motif_diff_df = self.generate_motif_diff_df(save_motif_df=True)
+
+        with open(f"{self.output_dir}/logs/failed_rsid_not_in_ref.txt", "w") as f:
+            for item in self.all_failed_variant_list:
+                f.write(item)
+                f.write("\n")
+
+    def filter_variant_to_genes_map(self, variant_to_genes):
+        variant_to_genes = {rsid: gene for rsid, gene in variant_to_genes.items() if rsid in self.variant_list}
+        celltype_specific_variant_to_genes = {}
+        for variant in variant_to_genes:
+            for cell_id in self.celltype_list:
+                nearby_genes = self.get_nearby_genes(variant, cell_id)
+                celltype_specific_variant_to_genes[(variant, cell_id)] = nearby_genes
+        return celltype_specific_variant_to_genes
+
     def load_normal_filter_normal_variants(self, normal_variants_path):
         normal_variants = pd.read_csv(normal_variants_path, sep='\t', comment='#', header=None)
         normal_variants.columns = ['Chromosome', 'Start', 'RSID', 'Ref', 'Alt', 'Qual', 'Filter', 'Info']
@@ -441,22 +481,7 @@ class CellMutCollection(object):
         return [cell_type, alt_exp/ref_exp], get_celltype, cell_mut
 
     def generate_motif_diff_df(self, save_motif_df=True):
-        variants_ref = pd.read_csv(self.variants_map_path, sep='\t').set_index('ID').Ref.to_dict() 
-        variants_alt = pd.read_csv(self.variants_map_path, sep='\t').set_index('ID').Alt.to_dict()
-        variants_ld = pd.read_csv(self.variants_map_path, sep='\t')
-
-        ld_map = {}
-        lead_snp = ""
-        for _, row in variants_ld.iterrows():
-            if row['Variant/LD'] == 'variant':
-                lead_snp = row['ID']
-                ld_map[row['ID']] = row['ID']
-            else:
-                ld_map[row['ID']] = lead_snp
-        
-        variants_rsid = self.variants_rsid.df
-        variants_rsid['Ref'] = variants_rsid.RSID.map(variants_ref)
-        variants_rsid['Alt'] = variants_rsid.RSID.map(variants_alt)
+        variants_rsid = self.all_variant_mut_df.copy()
         variants_rsid = variants_rsid.dropna()
         variants_rsid = Mutations(self.genome, variants_rsid)
         motif_diff = variants_rsid.get_motif_diff(self.motif)
@@ -464,14 +489,25 @@ class CellMutCollection(object):
         
         if save_motif_df:
             motif_diff_df.to_csv(os.path.join(self.output_dir, 'motif_diff_df.csv'))
-        return ld_map, motif_diff_df
+        return motif_diff_df
             
     def get_variant_score(self, args_tuple):
-        variant, gene, cell = args_tuple
-        variant_df = self.variants_rsid.df.query(f'RSID=="{variant}"').iloc[0]
+        variant, gene, cell_id = args_tuple
+        variant_df = self.all_variant_mut_df[self.all_variant_mut_df['RSID'] == variant].iloc[0]
         motif_diff_score = self.motif_diff_df.loc[variant]
-        cell = GETCellType(cell, self.get_config)
-        motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
+        # Use cached cell type
+        if cell_id in self.celltype_cache:
+            cell = self.celltype_cache[cell_id]
+        else:
+            cell = GETCellType(cell_id, self.get_config)
+            self.celltype_cache[cell_id] = cell
+        # Use cached jacobian
+        if (cell_id, gene) in self.jacobian_cache:
+            motif_importance = self.jacobian_cache[(cell_id, gene)]
+        else:
+            motif_importance = cell.get_gene_jacobian_summary(gene, 'motif')[0:-1]
+            self.jacobian_cache[(cell_id, gene)] = motif_importance
+
         diff = motif_diff_score.copy().values
         diff[(diff<0) & (diff>-10)] = 0
         diff[(diff<0) & (diff<-10)] = -1
@@ -479,14 +515,10 @@ class CellMutCollection(object):
         diff[(diff>0) & (diff>10)] = 1
         
         combined_score = diff*motif_importance.values
-        combined_score = pd.Series(combined_score, index=motif_diff_score.index.values).sort_values()
+        combined_score = pd.Series(combined_score, index=motif_diff_score.index.values)
         combined_score = pd.DataFrame(combined_score, columns=['score'])
         combined_score['gene'] = gene
         combined_score['variant'] = variant_df.RSID
-        try:
-            combined_score['ld'] = self.ld[variant_df.RSID]
-        except:
-            combined_score['ld'] = variant_df.RSID
         combined_score['chrom'] = variant_df.Chromosome
         combined_score['pos'] = variant_df.Start
         combined_score['ref'] = variant_df.Ref
@@ -496,35 +528,75 @@ class CellMutCollection(object):
         combined_score['motif_importance'] = motif_importance.values
         return combined_score
 
-    def get_all_variant_scores(self, output_name):        
+    def get_scores_for_single_risk_variant(self, variant):
+        variants_to_run = [variant] + self.variant_to_normal_variants[variant]
+        
         scores = []
-        args_col = []
-        for variant in self.variants_list:
-            for gene in self.genes_list:
-                for celltype in self.celltypes_list:
-                    args_col.append([variant, gene, celltype])
-                            
+        failed_args = []
+        for cur_celltype in self.celltype_list:
+            gene_set = self.variant_to_genes[(variant, cur_celltype)]
+            for cur_variant in variants_to_run:
+                for cur_gene in gene_set:
+                    try:
+                        scores.append(self.get_variant_score((cur_variant, cur_gene, cur_celltype)))
+                    except gr.exceptions.Error as e:
+                        failed_args.append((cur_variant, cur_gene, cur_celltype))
+
+        if scores:
+            scores = pd.concat(scores, axis=0)
+            scores.reset_index().to_feather(f"{self.output_dir}/feather/{variant}.feather")
+            scores.reset_index().to_csv(f"{self.output_dir}/csv/{variant}.csv")
+        return failed_args
+
+    def get_all_variant_scores(self):       
         scores = []
+        failed_args = []
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            future_to_score = {executor.submit(self.get_variant_score, args_tuple): args_tuple for args_tuple in args_col}
+            future_to_score = {executor.submit(self.get_scores_for_single_risk_variant, variant): variant for variant in self.variant_list}
             for future in concurrent.futures.as_completed(future_to_score):
-                scores.append(future.result())
-
-        scores = pd.concat(scores, axis=0)
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-        scores.reset_index().to_feather(f"{self.output_dir}/{output_name}.feather")
-        scores.reset_index().to_csv(f"{self.output_dir}/{output_name}.csv")
+                failed_args.append(future.result())
+        
+        flat_failed_args = [failed_tuple for failed_tuple_subgroup in failed_args for failed_tuple in failed_tuple_subgroup]
+        with open(f"{self.output_dir}/logs/failed_args_no_overlap_with_annot.txt", "w") as f:
+            for item in flat_failed_args:
+                f.write(str(item))
+                f.write("\n")
         return scores
+    
+    def get_nearby_variants(self, variant, distance=2000):
+        chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
+        start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
+        end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
+        filename = f"https://gnomad-public-us-east-1.s3.amazonaws.com/release/4.0/vcf/genomes/gnomad.genomes.v4.0.sites.{chrom}.vcf.bgz"
+        query = f"{chrom}:{start}-{end}"
+        command = ["tabix", filename, query]
+        result = subprocess.run(command, stdout=subprocess.PIPE)
+        result_lines = result.stdout.decode('utf-8').strip().split("\n")
 
-    @staticmethod
-    def get_nearby_genes(variant, cell, distance=2000000):
-        chrom = variant['Chromosome']
-        pos = variant['Start']
+        normal_variants = []
+        for line in result_lines:
+            normal_rsid = line.split("\t")[2]
+            if normal_rsid.startswith("rs"):
+                normal_variants.append(normal_rsid)
+
+        if self.debug:
+            normal_variants = normal_variants[:2]
+        normal_var_muts, normal_processed_rsids, normal_failed_rsids = read_rsid_parallel(self.genome, normal_variants, num_workers=self.num_workers)
+        return [normal_var_muts, normal_processed_rsids, normal_failed_rsids]
+
+    def get_nearby_genes(self, variant, cell_id, distance=2000000):
+        if cell_id in self.celltype_cache:
+            cell = self.celltype_cache[cell_id]
+        else:
+            cell = GETCellType(cell_id, self.get_config)
+            self.celltype_cache[cell_id] = cell
+        chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
+        pos = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0]
         start = pos-distance
         end = pos+distance
         genes = cell.gene_annot.query('Chromosome==@chrom & Start>@start & Start<@end')
-        return ','.join(np.unique(genes.gene_name.values))
+        return np.unique(genes.gene_name.values).tolist()
 
 
 class SVs(object):
