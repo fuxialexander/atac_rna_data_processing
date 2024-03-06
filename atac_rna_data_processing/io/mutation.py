@@ -413,7 +413,7 @@ class CellMutCollection(object):
         self.get_config.assets_dir=''
         self.get_config.s3_file_sys=''
         self.get_config.celltype.data_dir ='/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
-        self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
+        self.get_config.celltype.interpret_dir='/burg/pmg/users/shared/resources/get_interpret/Interpretation_all_hg38_allembed_v4_natac'
 
         if self.debug:
             variant_list = variant_list[:2]
@@ -564,7 +564,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_nearby_variants(self, variant, distance=2000):
+    def get_nearby_variants(self, variant, distance=2000000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
@@ -574,16 +574,34 @@ class CellMutCollection(object):
         result = subprocess.run(command, stdout=subprocess.PIPE)
         result_lines = result.stdout.decode('utf-8').strip().split("\n")
 
-        normal_variants = []
+        processed_rsids, failed_rsids = [], []
         for line in result_lines:
-            normal_rsid = line.split("\t")[2]
-            if normal_rsid.startswith("rs"):
-                normal_variants.append(normal_rsid)
+            chrom, pos, normal_rsid, ref, alt, qual, filter, info, _ = line.split("\t", maxsplit=8)
+            af = info.split(";")[3]
+            if af.startswith("AF="):
+                af = float(af.split("=")[1])
+            else:
+                af = None
+
+            if filter == "PASS" and af > 1e-8:
+                normal_rsid = normal_rsid.split(";")[0]
+                alt = alt.split(",")[0]
+                df = pd.DataFrame.from_dict(
+                    {
+                        "Chromosome": chrom,
+                        "Start": int(pos) - 1,
+                        "End": int(pos),
+                        "Ref": ref,
+                        "Alt": alt,
+                        "RSID": normal_rsid,
+                    }
+                )
+                processed_rsids.append(normal_rsid)
 
         if self.debug:
             normal_variants = normal_variants[:2]
-        normal_var_muts, normal_processed_rsids, normal_failed_rsids = read_rsid_parallel(self.genome, normal_variants, num_workers=self.num_workers)
-        return [normal_var_muts, normal_processed_rsids, normal_failed_rsids]
+
+        return [Mutations(self.genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids]
 
     def get_nearby_genes(self, variant, cell_id, distance=2000000):
         if cell_id in self.celltype_cache:

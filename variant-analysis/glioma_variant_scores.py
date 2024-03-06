@@ -13,7 +13,7 @@ def get_celltype_list(celltype_annot_path):
     id_to_celltype = celltype_annot_dict
     celltype_to_id = {v: k for k, v in id_to_celltype.items()}
 
-    substr_list = ["Oligodendrocyte", "ligoden", "Astrocyte", "strocyte", "Neuron", "euron"]
+    substr_list = ["Oligodendrocyte", "ligoden", "Astrocyte", "strocyte"]
 
     celltype_list = []
     for celltype in celltype_to_id:
@@ -60,6 +60,6 @@ cell_mut_col = CellMutCollection(
     variant_to_genes,
     output_dir,
     num_workers,
-    debug=False, # quick run for 5 risk variants
+    debug=False, # if True, quick run for 5 risk variants
 )
 scores = cell_mut_col.get_all_variant_scores()
