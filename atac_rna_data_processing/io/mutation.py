@@ -400,7 +400,7 @@ class CellMutCollection(object):
         self.num_workers = num_workers
         self.get_config_path = get_config_path
 
-        self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
+        self.inf_model = InferenceModel(self.ckpt_path, 'cpu')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
         self.debug = debug
@@ -575,33 +575,45 @@ class CellMutCollection(object):
         result_lines = result.stdout.decode('utf-8').strip().split("\n")
 
         processed_rsids, failed_rsids = [], []
+        chrom_list, start_list, end_list, ref_list, alt_list, rsid_list = [], [], [], [], [], []
         for line in result_lines:
-            chrom, pos, normal_rsid, ref, alt, qual, filter, info, _ = line.split("\t", maxsplit=8)
+            chrom, pos, normal_rsid, ref, alt, qual, filter, info = line.split("\t", maxsplit=7)
+            
+            # Parse out allele frequency
             af = info.split(";")[3]
             if af.startswith("AF="):
                 af = float(af.split("=")[1])
             else:
                 af = None
-
-            if filter == "PASS" and af > 1e-8:
+            
+            # Filter by PASS and allele frequency
+            if filter == "PASS" and af is not None and af > 1e-6:
                 normal_rsid = normal_rsid.split(";")[0]
-                alt = alt.split(",")[0]
-                df = pd.DataFrame.from_dict(
-                    {
-                        "Chromosome": chrom,
-                        "Start": int(pos) - 1,
-                        "End": int(pos),
-                        "Ref": ref,
-                        "Alt": alt,
-                        "RSID": normal_rsid,
-                    }
-                )
                 processed_rsids.append(normal_rsid)
+                chrom_list.append(chrom)
+                start_list.append(int(pos) - 1)
+                end_list.append(int(pos))
+                ref_list.append(ref)
+                alt_list.append(alt.split(",")[0])
+                rsid_list.append(normal_rsid)
 
+        df = pd.DataFrame.from_dict({
+                "Chromosome": chrom_list,
+                "Start": start_list,
+                "End": end_list,
+                "Ref": ref_list,
+                "Alt": alt_list,
+                "RSID": rsid_list,
+            }
+        )
         if self.debug:
-            normal_variants = normal_variants[:2]
-
-        return [Mutations(self.genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids]
+            processed_rsids = processed_rsids[:2]
+            df = df.iloc[:2]
+        
+        if len(df) > 0:
+            return [Mutations(self.genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids]
+        else:
+            return [Mutations(self.genome, None), processed_rsids, failed_rsids]
 
     def get_nearby_genes(self, variant, cell_id, distance=2000000):
         if cell_id in self.celltype_cache:
