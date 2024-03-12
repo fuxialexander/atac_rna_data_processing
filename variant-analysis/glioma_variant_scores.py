@@ -25,7 +25,7 @@ def get_celltype_list(celltype_annot_path):
 
 def get_variant_to_genes_list(variants_path, genes_list):
     variants_df = pd.read_csv(variants_path, sep="\t")
-    variant_list = list(variants_df.ID.values)
+    variant_list = list(set(list(variants_df.ID.values)))
     variant_to_genes = {rsid: genes_list for rsid in variant_list}
     return variant_list, variant_to_genes
 
@@ -47,7 +47,7 @@ motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
 output_name = "gbm-full" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
-num_workers = 98 # number of parallel workers
+num_workers = 96 # number of parallel workers
 
 cell_mut_col = CellMutCollection(
     model_ckpt_path,

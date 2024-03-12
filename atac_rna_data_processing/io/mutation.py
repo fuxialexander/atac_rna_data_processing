@@ -400,7 +400,7 @@ class CellMutCollection(object):
         self.num_workers = num_workers
         self.get_config_path = get_config_path
 
-        self.inf_model = InferenceModel(self.ckpt_path, 'cpu')
+        self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
         self.debug = debug
@@ -483,6 +483,7 @@ class CellMutCollection(object):
     def generate_motif_diff_df(self, save_motif_df=True):
         variants_rsid = self.all_variant_mut_df.copy()
         variants_rsid = variants_rsid.dropna()
+        variants_rsid = variants_rsid.drop_duplicates(subset="RSID", keep="first")
         variants_rsid = Mutations(self.genome, variants_rsid)
         motif_diff = variants_rsid.get_motif_diff(self.motif)
         motif_diff_df = pd.DataFrame((motif_diff['Alt'].values-motif_diff['Ref'].values), index=variants_rsid.df.RSID.values, columns=self.motif.cluster_names)
@@ -564,7 +565,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_nearby_variants(self, variant, distance=2000000):
+    def get_nearby_variants(self, variant, distance=20000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
@@ -575,19 +576,19 @@ class CellMutCollection(object):
         result_lines = result.stdout.decode('utf-8').strip().split("\n")
 
         processed_rsids, failed_rsids = [], []
-        chrom_list, start_list, end_list, ref_list, alt_list, rsid_list = [], [], [], [], [], []
+        chrom_list, start_list, end_list, ref_list, alt_list, rsid_list, af_list = [], [], [], [], [], [], []
         for line in result_lines:
             chrom, pos, normal_rsid, ref, alt, qual, filter, info = line.split("\t", maxsplit=7)
             
             # Parse out allele frequency
-            af = info.split(";")[3]
+            af = info.split(";")[2]
             if af.startswith("AF="):
                 af = float(af.split("=")[1])
             else:
                 af = None
             
             # Filter by PASS and allele frequency
-            if filter == "PASS" and af is not None and af > 1e-6:
+            if filter == "PASS" and af is not None and af > 1e-2:
                 normal_rsid = normal_rsid.split(";")[0]
                 processed_rsids.append(normal_rsid)
                 chrom_list.append(chrom)
@@ -596,7 +597,8 @@ class CellMutCollection(object):
                 ref_list.append(ref)
                 alt_list.append(alt.split(",")[0])
                 rsid_list.append(normal_rsid)
-
+                af_list.append(af)
+        
         df = pd.DataFrame.from_dict({
                 "Chromosome": chrom_list,
                 "Start": start_list,
