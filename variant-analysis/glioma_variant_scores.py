@@ -30,6 +30,8 @@ def get_variant_to_genes_list(variants_path, genes_list):
     return variant_list, variant_to_genes
 
 
+print("Starting job...")
+
 # Configuration
 celltype_annot_path = "/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/data/cell_type_pretrain_human_bingren_shendure_apr2023.txt" # list of cell types with id
 celltype_list = get_celltype_list(celltype_annot_path)
@@ -45,9 +47,11 @@ working_dir = "/manitou/pmg/users/xf2217/interpret_natac/" # directory with ref 
 genome_path = os.path.join(working_dir, "hg38.fa")
 motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
-output_name = "gbm-full" # experiment name
+output_name = "gbm-remaining" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
-num_workers = 96 # number of parallel workers
+num_workers = 30 # number of parallel workers
+
+print(f"Processing {len(variant_list)} variants...")
 
 cell_mut_col = CellMutCollection(
     model_ckpt_path,
