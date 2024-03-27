@@ -24,8 +24,9 @@ def get_celltype_list(celltype_annot_path):
 
 
 def get_variant_to_genes_list(variants_path, genes_list):
-    variants_df = pd.read_csv(variants_path, sep="\t")
-    variant_list = list(set(list(variants_df.ID.values)))
+    # variants_df = pd.read_csv(variants_path, sep="\t")
+    # variant_list = list(set(list(variants_df.ID.values)))
+    variant_list = ['rs55705857', 'rs72716328', 'rs147958197']
     variant_to_genes = {rsid: genes_list for rsid in variant_list}
     return variant_list, variant_to_genes
 
@@ -47,9 +48,9 @@ working_dir = "/manitou/pmg/users/xf2217/interpret_natac/" # directory with ref 
 genome_path = os.path.join(working_dir, "hg38.fa")
 motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
-output_name = "gbm-remaining" # experiment name
+output_name = "myc-continuous" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
-num_workers = 30 # number of parallel workers
+num_workers = 10 # number of parallel workers
 
 print(f"Processing {len(variant_list)} variants...")
 

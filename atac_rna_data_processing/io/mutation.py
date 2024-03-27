@@ -12,7 +12,6 @@ from tqdm import tqdm
 
 import torch
 import os
-import tabix
 import concurrent.futures
 import requests
 from glob import glob
@@ -413,7 +412,7 @@ class CellMutCollection(object):
         self.get_config.assets_dir=''
         self.get_config.s3_file_sys=''
         self.get_config.celltype.data_dir ='/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
-        self.get_config.celltype.interpret_dir='/burg/pmg/users/shared/resources/get_interpret/Interpretation_all_hg38_allembed_v4_natac'
+        self.get_config.celltype.interpret_dir='/pmglocal/xf2217/Interpretation_all_hg38_allembed_v4_natac'
 
         if self.debug:
             variant_list = variant_list[:2]
@@ -510,10 +509,10 @@ class CellMutCollection(object):
             self.jacobian_cache[(cell_id, gene)] = motif_importance
 
         diff = motif_diff_score.copy().values
-        diff[(diff<0) & (diff>-10)] = 0
-        diff[(diff<0) & (diff<-10)] = -1
-        diff[(diff>0) & (diff<10)] = 0
-        diff[(diff>0) & (diff>10)] = 1
+        # diff[(diff<0) & (diff>-10)] = 0
+        # diff[(diff<0) & (diff<-10)] = -1
+        # diff[(diff>0) & (diff<10)] = 0
+        # diff[(diff>0) & (diff>10)] = 1
         
         combined_score = diff*motif_importance.values
         combined_score = pd.Series(combined_score, index=motif_diff_score.index.values)
