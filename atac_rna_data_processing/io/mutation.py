@@ -168,7 +168,7 @@ def read_rsid_parallel(genome, rsid_list, num_workers=10):
                 failed_rsids.append(future_to_rsid[future])
 
     if len(df) > 0:
-        df = pd.concat(df).query('~location.str.contains("CHR")').query('assembly_name=="GRCh38"')
+        df = pd.concat(df).query('coord_system=="chromosome"').query('assembly_name=="GRCh38"')
         df['Start'] = df['start']-1
         df['End'] = df['start']
         df['Chromosome'] = df.seq_region_name.apply(lambda x: 'chr'+x)
