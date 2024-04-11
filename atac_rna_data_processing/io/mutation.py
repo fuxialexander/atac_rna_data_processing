@@ -386,7 +386,6 @@ class CellMutCollection(object):
             celltype_annot_path,
             celltype_list,
             variant_list,
-            variant_to_genes,
             output_dir,
             num_workers,
             debug=False,
@@ -428,7 +427,7 @@ class CellMutCollection(object):
         self.celltype_cache = {}
         self.jacobian_cache = {}
         self.variant_muts, self.variant_list, self.failed_rsids = read_rsid_parallel(self.genome, variant_list, num_workers=self.num_workers)
-        self.variant_to_genes = self.filter_variant_to_genes_map(variant_to_genes)
+        self.variant_to_genes = self.get_variant_to_genes_map()
         self.variant_to_normal_variants = {}
         
         all_variant_mut_df_col = [self.variant_muts.df]
@@ -448,13 +447,11 @@ class CellMutCollection(object):
                 f.write(item)
                 f.write("\n")
 
-    def filter_variant_to_genes_map(self, variant_to_genes):
-        variant_to_genes = {rsid: gene for rsid, gene in variant_to_genes.items() if rsid in self.variant_list}
+    def get_variant_to_genes_map(self):
         celltype_specific_variant_to_genes = {}
-        for variant in variant_to_genes:
+        for variant in self.variant_list:
             for cell_id in self.celltype_list:
-                nearby_genes = self.get_nearby_genes(variant, cell_id)
-                celltype_specific_variant_to_genes[(variant, cell_id)] = nearby_genes
+                celltype_specific_variant_to_genes[(variant, cell_id)] = self.get_nearby_genes(variant, cell_id)
         return celltype_specific_variant_to_genes
 
     def load_normal_filter_normal_variants(self, normal_variants_path):
@@ -486,7 +483,7 @@ class CellMutCollection(object):
         variants_rsid = Mutations(self.genome, variants_rsid)
         motif_diff = variants_rsid.get_motif_diff(self.motif)
         motif_diff_df = pd.DataFrame((motif_diff['Alt'].values-motif_diff['Ref'].values), index=variants_rsid.df.RSID.values, columns=self.motif.cluster_names)
-        
+
         if save_motif_df:
             motif_diff_df.to_csv(os.path.join(self.output_dir, 'motif_diff_df.csv'))
         return motif_diff_df
@@ -525,7 +522,7 @@ class CellMutCollection(object):
         combined_score['alt'] = variant_df.Alt
         combined_score['celltype'] = self.celltype_annot_dict[cell.celltype]
         combined_score['diff'] = diff
-        combined_score['motif_importance'] = motif_importance.values
+        combined_score['motif_importance'] = motif_importance.values  
         return combined_score
 
     def get_scores_for_single_risk_variant(self, variant):
