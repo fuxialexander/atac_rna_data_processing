@@ -12,7 +12,6 @@ from tqdm import tqdm
 
 import torch
 import os
-import tabix
 import concurrent.futures
 import requests
 from glob import glob
@@ -413,7 +412,7 @@ class CellMutCollection(object):
         self.get_config.assets_dir=''
         self.get_config.s3_file_sys=''
         self.get_config.celltype.data_dir ='/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/fetal_adult/'
-        self.get_config.celltype.interpret_dir='/manitou/pmg/users/xf2217/Interpretation_all_hg38_allembed_v4_natac'
+        self.get_config.celltype.interpret_dir='/pmglocal/xf2217/Interpretation_all_hg38_allembed_v4_natac'
 
         if self.debug:
             variant_list = variant_list[:2]
@@ -483,6 +482,7 @@ class CellMutCollection(object):
     def generate_motif_diff_df(self, save_motif_df=True):
         variants_rsid = self.all_variant_mut_df.copy()
         variants_rsid = variants_rsid.dropna()
+        variants_rsid = variants_rsid.drop_duplicates(subset="RSID", keep="first")
         variants_rsid = Mutations(self.genome, variants_rsid)
         motif_diff = variants_rsid.get_motif_diff(self.motif)
         motif_diff_df = pd.DataFrame((motif_diff['Alt'].values-motif_diff['Ref'].values), index=variants_rsid.df.RSID.values, columns=self.motif.cluster_names)
@@ -509,10 +509,10 @@ class CellMutCollection(object):
             self.jacobian_cache[(cell_id, gene)] = motif_importance
 
         diff = motif_diff_score.copy().values
-        diff[(diff<0) & (diff>-10)] = 0
-        diff[(diff<0) & (diff<-10)] = -1
-        diff[(diff>0) & (diff<10)] = 0
-        diff[(diff>0) & (diff>10)] = 1
+        # diff[(diff<0) & (diff>-10)] = 0
+        # diff[(diff<0) & (diff<-10)] = -1
+        # diff[(diff>0) & (diff<10)] = 0
+        # diff[(diff>0) & (diff>10)] = 1
         
         combined_score = diff*motif_importance.values
         combined_score = pd.Series(combined_score, index=motif_diff_score.index.values)
@@ -564,7 +564,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_nearby_variants(self, variant, distance=2000):
+    def get_nearby_variants(self, variant, distance=20000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
@@ -574,16 +574,47 @@ class CellMutCollection(object):
         result = subprocess.run(command, stdout=subprocess.PIPE)
         result_lines = result.stdout.decode('utf-8').strip().split("\n")
 
-        normal_variants = []
+        processed_rsids, failed_rsids = [], []
+        chrom_list, start_list, end_list, ref_list, alt_list, rsid_list, af_list = [], [], [], [], [], [], []
         for line in result_lines:
-            normal_rsid = line.split("\t")[2]
-            if normal_rsid.startswith("rs"):
-                normal_variants.append(normal_rsid)
-
+            chrom, pos, normal_rsid, ref, alt, qual, filter, info = line.split("\t", maxsplit=7)
+            
+            # Parse out allele frequency
+            af = info.split(";")[2]
+            if af.startswith("AF="):
+                af = float(af.split("=")[1])
+            else:
+                af = None
+            
+            # Filter by PASS and allele frequency
+            if filter == "PASS" and af is not None and af > 1e-2:
+                normal_rsid = normal_rsid.split(";")[0]
+                processed_rsids.append(normal_rsid)
+                chrom_list.append(chrom)
+                start_list.append(int(pos) - 1)
+                end_list.append(int(pos))
+                ref_list.append(ref)
+                alt_list.append(alt.split(",")[0])
+                rsid_list.append(normal_rsid)
+                af_list.append(af)
+        
+        df = pd.DataFrame.from_dict({
+                "Chromosome": chrom_list,
+                "Start": start_list,
+                "End": end_list,
+                "Ref": ref_list,
+                "Alt": alt_list,
+                "RSID": rsid_list,
+            }
+        )
         if self.debug:
-            normal_variants = normal_variants[:2]
-        normal_var_muts, normal_processed_rsids, normal_failed_rsids = read_rsid_parallel(self.genome, normal_variants, num_workers=self.num_workers)
-        return [normal_var_muts, normal_processed_rsids, normal_failed_rsids]
+            processed_rsids = processed_rsids[:2]
+            df = df.iloc[:2]
+        
+        if len(df) > 0:
+            return [Mutations(self.genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids]
+        else:
+            return [Mutations(self.genome, None), processed_rsids, failed_rsids]
 
     def get_nearby_genes(self, variant, cell_id, distance=2000000):
         if cell_id in self.celltype_cache:

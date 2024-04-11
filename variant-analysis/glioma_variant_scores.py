@@ -13,7 +13,7 @@ def get_celltype_list(celltype_annot_path):
     id_to_celltype = celltype_annot_dict
     celltype_to_id = {v: k for k, v in id_to_celltype.items()}
 
-    substr_list = ["Oligodendrocyte", "ligoden", "Astrocyte", "strocyte", "Neuron", "euron"]
+    substr_list = ["Oligodendrocyte", "ligoden", "Astrocyte", "strocyte"]
 
     celltype_list = []
     for celltype in celltype_to_id:
@@ -24,11 +24,14 @@ def get_celltype_list(celltype_annot_path):
 
 
 def get_variant_to_genes_list(variants_path, genes_list):
-    variants_df = pd.read_csv(variants_path, sep="\t")
-    variant_list = list(variants_df.ID.values)
+    # variants_df = pd.read_csv(variants_path, sep="\t")
+    # variant_list = list(set(list(variants_df.ID.values)))
+    variant_list = ['rs55705857', 'rs72716328', 'rs147958197']
     variant_to_genes = {rsid: genes_list for rsid in variant_list}
     return variant_list, variant_to_genes
 
+
+print("Starting job...")
 
 # Configuration
 celltype_annot_path = "/manitou/pmg/users/xf2217/pretrain_human_bingren_shendure_apr2023/data/cell_type_pretrain_human_bingren_shendure_apr2023.txt" # list of cell types with id
@@ -45,9 +48,11 @@ working_dir = "/manitou/pmg/users/xf2217/interpret_natac/" # directory with ref 
 genome_path = os.path.join(working_dir, "hg38.fa")
 motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
-output_name = "gbm-full" # experiment name
+output_name = "myc-continuous" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
-num_workers = 80 # number of parallel workers
+num_workers = 10 # number of parallel workers
+
+print(f"Processing {len(variant_list)} variants...")
 
 cell_mut_col = CellMutCollection(
     model_ckpt_path,
@@ -60,6 +65,6 @@ cell_mut_col = CellMutCollection(
     variant_to_genes,
     output_dir,
     num_workers,
-    debug=False, # quick run for 5 risk variants
+    debug=False, # if True, quick run for 5 risk variants
 )
 scores = cell_mut_col.get_all_variant_scores()
