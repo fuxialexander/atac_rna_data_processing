@@ -34,6 +34,9 @@ from atac_rna_data_processing.io.sequence import (DNASequence,
 from get_model.inference import InferenceModel
 
 
+bp_set = {'A', 'T', 'C', 'G', 'N'}
+
+
 def bgzip(filename):
     """Call bgzip to compress a file."""
     Popen(['bgzip', '-f', filename])
@@ -388,6 +391,7 @@ class CellMutCollection(object):
             variant_list,
             output_dir,
             num_workers,
+            run_sat_mutagen,
             debug=False,
         ):
         self.output_dir = output_dir
@@ -397,6 +401,7 @@ class CellMutCollection(object):
         self.ckpt_path = model_ckpt_path
         self.num_workers = num_workers
         self.get_config_path = get_config_path
+        self.run_sat_mutagen = run_sat_mutagen
 
         self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', genome_path)
@@ -433,7 +438,10 @@ class CellMutCollection(object):
         all_variant_mut_df_col = [self.variant_muts.df]
         all_failed_variant_list = []
         for rsid in self.variant_list:
-            normal_variants_muts, processed_normal_variants, failed_normal_variants = self.get_nearby_variants(rsid)
+            if self.run_sat_mutagen:
+                normal_variants_muts, processed_normal_variants, failed_normal_variants = self.get_saturated_mutagenesis(rsid)
+            else:
+                normal_variants_muts, processed_normal_variants, failed_normal_variants = self.get_nearby_variants(rsid)
             all_variant_mut_df_col.append(normal_variants_muts.df)
             self.variant_to_normal_variants[rsid] = processed_normal_variants
             all_failed_variant_list += failed_normal_variants
@@ -560,6 +568,44 @@ class CellMutCollection(object):
                 f.write(str(item))
                 f.write("\n")
         return scores
+    
+    def get_saturated_mutagenesis(self, variant, distance=20000):
+        chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
+        start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
+        end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
+
+        cur_seq = self.genome.get_sequence(chrom, start, end).seq
+
+        chrom_list, start_list, end_list, ref_list, alt_list = [], [], [], [], []
+        processed_rsids, failed_rsids = [], []
+        for bp_idx in range(start, end):
+            ref = cur_seq[bp_idx - start]
+            for alt_bp in bp_set.diff({ref}):
+                chrom_list.append(chrom)
+                ref_list.append()
+                start_list.append(bp_idx - 1)
+                end_list.append(bp_idx)
+                alt_list.append(alt_bp)
+                rsid = f"{chrom}_{bp_idx}_{ref}_{alt_bp}"
+                processed_rsids.append(rsid)
+        
+        df = pd.DataFrame.from_dict({
+                "Chromosome": chrom_list,
+                "Start": start_list,
+                "End": end_list,
+                "Ref": ref_list,
+                "Alt": alt_list,
+                "RSID": processed_rsids,
+            }
+        )
+        if self.debug:
+            processed_rsids = processed_rsids[:2]
+            df = df.iloc[:2]
+        
+        if len(df) > 0:
+            return [Mutations(self.genome, df[['Chromosome', 'Start', 'End', 'Ref', 'Alt', 'RSID']]), processed_rsids, failed_rsids]
+        else:
+            return [Mutations(self.genome, None), processed_rsids, failed_rsids]
     
     def get_nearby_variants(self, variant, distance=20000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
