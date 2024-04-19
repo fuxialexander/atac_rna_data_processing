@@ -27,11 +27,11 @@ def aggregate_p_values(args):
 
 
 if __name__=="__main__":
-    p_value_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/aml-variants/p_values_final"
+    p_value_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/mds-variants/p_values"
 
     parser = argparse.ArgumentParser(description="Compute p-values for risk variants")
-    parser.add_argument("--p_value_dir", type=str, help="Path to p values")
     parser.add_argument("--exp_name", type=str, help="Name of experiment")
     args = parser.parse_args()
 
+    args.p_value_dir = p_value_dir
     aggregate_p_values(args)

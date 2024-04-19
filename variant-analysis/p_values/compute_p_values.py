@@ -44,7 +44,7 @@ def compute_p_value_from_scores(score_file):
 
 
 if __name__=="__main__":
-    output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/aml-variants/p_values_final"
+    output_dir = "/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/mds-variants/p_values"
 
     parser = argparse.ArgumentParser(description="Compute p-values for risk variants")
     parser.add_argument("--file_path", type=str, help="Path to score file")
