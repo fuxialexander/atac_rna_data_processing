@@ -333,7 +333,7 @@ class MutationsInCellType(object):
         # Calculate new motif
         if inf_model is None:
             checkpoint_path = '/manitou/pmg/projects/resources/get_interpret/pretrain_finetune_natac_fetal_adult.pth'
-            inf_model = InferenceModel(checkpoint_path, 'cuda')
+            inf_model = InferenceModel(checkpoint_path, 'cpu')
 
         ref = self.mut.df.query('RSID==@rsid').Ref.values[0]
         alt = self.mut.df.query('RSID==@rsid').Alt.values[0]
@@ -403,7 +403,7 @@ class CellMutCollection(object):
         self.get_config_path = get_config_path
         self.run_sat_mutagen = run_sat_mutagen
 
-        self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
+        self.inf_model = InferenceModel(self.ckpt_path, 'cpu')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
         self.debug = debug
@@ -569,7 +569,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_saturated_mutagenesis(self, variant, distance=20000):
+    def get_saturated_mutagenesis(self, variant, distance=1000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
