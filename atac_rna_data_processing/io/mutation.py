@@ -569,7 +569,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_saturated_mutagenesis(self, variant, distance=3):
+    def get_saturated_mutagenesis(self, variant, distance=500):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance

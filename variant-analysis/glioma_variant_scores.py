@@ -44,7 +44,7 @@ working_dir = "/manitou/pmg/users/xf2217/interpret_natac/" # directory with ref 
 genome_path = os.path.join(working_dir, "hg38.fa")
 motif_path = os.path.join(working_dir, "NrMotifV1.pkl")
 
-output_name = "myc-sat-mutagen" # experiment name
+output_name = "myc-sat-mutagen-full" # experiment name
 output_dir = f"/pmglocal/alb2281/repos/atac_rna_data_processing/variant-analysis/output/{output_name}" # output directory
 num_workers = 20 # number of parallel workers
 
