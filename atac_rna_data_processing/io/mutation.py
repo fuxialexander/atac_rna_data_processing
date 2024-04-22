@@ -569,7 +569,7 @@ class CellMutCollection(object):
                 f.write("\n")
         return scores
     
-    def get_saturated_mutagenesis(self, variant, distance=1000):
+    def get_saturated_mutagenesis(self, variant, distance=3):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
@@ -579,14 +579,14 @@ class CellMutCollection(object):
         chrom_list, start_list, end_list, ref_list, alt_list = [], [], [], [], []
         processed_rsids, failed_rsids = [], []
         for bp_idx in range(start, end):
-            ref = cur_seq[bp_idx - start]
-            for alt_bp in bp_set.diff({ref}):
+            ref_bp = cur_seq[bp_idx - start]
+            for alt_bp in bp_set.difference({ref_bp}):
                 chrom_list.append(chrom)
-                ref_list.append()
+                ref_list.append(ref_bp)
                 start_list.append(bp_idx - 1)
                 end_list.append(bp_idx)
                 alt_list.append(alt_bp)
-                rsid = f"{chrom}_{bp_idx}_{ref}_{alt_bp}"
+                rsid = f"{chrom}_{bp_idx}_{ref_bp}_{alt_bp}"
                 processed_rsids.append(rsid)
         
         df = pd.DataFrame.from_dict({
