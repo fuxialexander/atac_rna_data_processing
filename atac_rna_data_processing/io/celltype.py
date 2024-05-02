@@ -68,11 +68,11 @@ class Celltype:
         self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f"{self.data_dir}{celltype}.exp.feather"
         if path_exists_with_s3(
-            os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+            os.path.join(self.interpret_cell_dir, f"{self.celltype}/allgenes/{self.celltype}.zarr"),
             s3_file_sys=self.s3_file_sys
         ):
             self._zarr_data = load_zarr_with_s3(
-                os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"),
+                os.path.join(self.interpret_cell_dir, f"{self.celltype}/allgenes/{self.celltype}.zarr"),
                 mode="a",
                 s3_file_sys=self.s3_file_sys
             )
