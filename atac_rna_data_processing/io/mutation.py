@@ -359,13 +359,10 @@ class MutationsInCellType(object):
         # Create tensors for prediction
         original = torch.Tensor(original_matrix).unsqueeze(0).to(inf_model.device)
         altered = torch.Tensor(altered_matrix).unsqueeze(0).to(inf_model.device)
-        seq = torch.randn(1, N, 283, 4).to(inf_model.device)  # Dummy seq data
-        tss_mask = torch.ones(1, N).to(inf_model.device)  # Dummy TSS mask
-        ctcf_pos = torch.ones(1, N).to(inf_model.device)  # Dummy CTCF positions
 
         # Predict expression
-        _, original_exp = inf_model.predict(original, seq, tss_mask, ctcf_pos)
-        _, altered_exp = inf_model.predict(altered, seq, tss_mask, ctcf_pos)
+        original_exp = inf_model.predict(original)
+        altered_exp = inf_model.predict(altered)
 
         # Calculate and return the expression predictions
         original_pred = 10 ** (original_exp[0, center, strand_idx].item()) - 1
