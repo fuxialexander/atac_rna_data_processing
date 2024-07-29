@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 
 import gradio as gr
 import matplotlib.pyplot as plt
@@ -10,12 +11,6 @@ import pkg_resources
 import plotly.graph_objects as go
 import seaborn as sns
 import zarr
-from io import BytesIO
-from plotly.subplots import make_subplots
-from scipy.sparse import coo_matrix, csr_matrix
-from scipy.stats import zscore
-from tqdm import tqdm
-
 from atac_rna_data_processing.config.load_config import *
 # import r2_score
 from atac_rna_data_processing.io.causal_lib import (get_subnet, plot_comm,
@@ -25,16 +20,22 @@ from atac_rna_data_processing.io.gene import TSS, Gene, GeneExp
 from atac_rna_data_processing.io.motif import MotifClusterCollection
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 from atac_rna_data_processing.io.s3_utils import *
-
+from plotly.subplots import make_subplots
+from scipy.sparse import coo_matrix, csr_matrix
+from scipy.stats import zscore
+from tqdm import tqdm
 
 motif = NrMotifV1.load_from_pickle(
-    pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
+    pkg_resources.resource_filename(
+        "atac_rna_data_processing", "data/NrMotifV1.pkl")
 )
 motif_clusters = motif.cluster_names
 
 # Load gencode_hg38 from feather file
-gencode_hg38 = pd.read_feather(pkg_resources.resource_filename("atac_rna_data_processing", "data/gencode.v40.hg38.feather"))
-gencode_hg38["Strand"] = gencode_hg38["Strand"].apply(lambda x: 0 if x == "+" else 1)
+gencode_hg38 = pd.read_feather(pkg_resources.resource_filename(
+    "atac_rna_data_processing", "data/gencode.v40.hg38.feather"))
+gencode_hg38["Strand"] = gencode_hg38["Strand"].apply(
+    lambda x: 0 if x == "+" else 1)
 gene2strand = gencode_hg38.set_index("gene_name").Strand.to_dict()
 
 
@@ -65,24 +66,29 @@ class Celltype:
         self.focus = num_region_per_sample // 2
         self.num_cls = num_cls
         self.s3_file_sys = s3_file_sys
-        self.interpret_cell_dir = os.path.join(self.interpret_dir, celltype, "allgenes")
+        self.interpret_cell_dir = os.path.join(
+            self.interpret_dir, celltype, "allgenes")
         self.gene_feather_path = f"{self.data_dir}{celltype}.exp.feather"
         if path_exists_with_s3(
-            os.path.join(self.interpret_cell_dir, f"{self.celltype}/allgenes/{self.celltype}.zarr"),
+            os.path.join(self.interpret_cell_dir,
+                         f"{self.celltype}/allgenes/{self.celltype}.zarr"),
             s3_file_sys=self.s3_file_sys
         ):
             self._zarr_data = load_zarr_with_s3(
-                os.path.join(self.interpret_cell_dir, f"{self.celltype}/allgenes/{self.celltype}.zarr"),
+                os.path.join(self.interpret_cell_dir,
+                             f"{self.celltype}/allgenes/{self.celltype}.zarr"),
                 mode="a",
                 s3_file_sys=self.s3_file_sys
             )
-            self.genelist = self._zarr_data['avaliable_genes']
+            self.genelist = self._zarr_data['avaliable_genes'] if 'avaliable_genes' in self._zarr_data.keys(
+            ) else self._zarr_data['gene_names']
         else:
             self.genelist = load_np_with_s3(
-                file_path=os.path.join(self.interpret_cell_dir, "avaliable_genes.npy"),
+                file_path=os.path.join(
+                    self.interpret_cell_dir, "avaliable_genes.npy"),
                 s3_file_sys=self.s3_file_sys,
             )
-        
+
         if not path_exists_with_s3(self.gene_feather_path, s3_file_sys=self.s3_file_sys):
             self.gene_feather_path = (
                 f"{self.interpret_dir}/{celltype}.gene_idx_dict.feather"
@@ -95,17 +101,17 @@ class Celltype:
         tss_idx = self.gene_annot.level_0.values
         self.tss_idx = tss_idx
         if input:
-            self.input = load_npz_with_s3(self.data_dir + celltype + ".watac.npz", s3_file_sys=self.s3_file_sys)[tss_idx]
+            self.input = load_npz_with_s3(
+                self.data_dir + celltype + ".watac.npz", s3_file_sys=self.s3_file_sys)[tss_idx]
             self.input_all = load_npz_with_s3(
                 self.data_dir + celltype + ".watac.npz",
                 s3_file_sys=self.s3_file_sys
             )
             self.tss_accessibility = self.input[:, self.num_features - 1]
         self.gene_annot["Strand"] = self.gene_annot["gene_name"].apply(
-                        lambda x: gene2strand[x])
+            lambda x: gene2strand[x])
         self.tss_strand = self.gene_annot.Strand.astype(int).values
         self.tss_start = self.peak_annot.iloc[tss_idx].Start.values
-        
 
         if hasattr(self, "_zarr_data"):
             import time
@@ -113,7 +119,8 @@ class Celltype:
                 start_time = time.time()
                 self.jacobs = self._zarr_data['jacobians']
                 # print time with 2 decimals
-                print(f'loaded jacobians in {time.time()-start_time:.2f} seconds')
+                print(
+                    f'loaded jacobians in {time.time()-start_time:.2f} seconds')
             start_time = time.time()
             self.preds = np.array(self._zarr_data["preds"])
             self.preds = np.array(
@@ -131,7 +138,8 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-            print(f'loaded preds and obs in {time.time()-start_time:.2f} seconds')
+            print(
+                f'loaded preds and obs in {time.time()-start_time:.2f} seconds')
             if embed:
                 start_time = time.time()
                 self.embed = self._zarr_data["embeds_0"]
@@ -155,13 +163,15 @@ class Celltype:
                 if path_exists_with_s3(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), s3_file_sys=self.s3_file_sys):
                     # load from zarr file
                     self.jacobs = load_zarr_with_s3(
-                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"),
+                        os.path.join(self.interpret_cell_dir,
+                                     "jacobians.zarr"),
                         mode="r",
                         s3_file_sys=self.s3_file_sys
                     )
                 else:
                     jacob_npz = coo_matrix(
-                        load_npz_with_s3(os.path.join(self.interpret_cell_dir, "jacobians.npz"), s3_file_sys=self.s3_file_sys)
+                        load_npz_with_s3(os.path.join(
+                            self.interpret_cell_dir, "jacobians.npz"), s3_file_sys=self.s3_file_sys)
                     )
                     z = zarr.zeros(
                         shape=jacob_npz.shape,
@@ -172,14 +182,17 @@ class Celltype:
                         (jacob_npz.row, jacob_npz.col), jacob_npz.data
                     )
                     # save to zarr file
-                    zarr.save(os.path.join(self.interpret_cell_dir, "jacobians.zarr"), z)
+                    zarr.save(os.path.join(
+                        self.interpret_cell_dir, "jacobians.zarr"), z)
                     self.jacobs = load_zarr_with_s3(
-                        os.path.join(self.interpret_cell_dir, "jacobians.zarr"),
+                        os.path.join(self.interpret_cell_dir,
+                                     "jacobians.zarr"),
                         mode="r",
                         s3_file_sys=self.s3_file_sys
                     )
 
-            self.preds = load_npz_with_s3(os.path.join(self.interpret_cell_dir, "preds.npz"), s3_file_sys=self.s3_file_sys)
+            self.preds = load_npz_with_s3(os.path.join(
+                self.interpret_cell_dir, "preds.npz"), s3_file_sys=self.s3_file_sys)
             self.preds = np.array(
                 [
                     self.preds[i]
@@ -188,7 +201,8 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-            self.obs = load_npz_with_s3(os.path.join(self.interpret_cell_dir, "obs.npz"), s3_file_sys=self.s3_file_sys)
+            self.obs = load_npz_with_s3(os.path.join(
+                self.interpret_cell_dir, "obs.npz"), s3_file_sys=self.s3_file_sys)
             self.obs = np.array(
                 [
                     self.obs[i]
@@ -197,7 +211,6 @@ class Celltype:
                     for i, j in enumerate(self.tss_strand)
                 ]
             )
-
 
         self.gene_annot["pred"] = self.preds
         self.gene_annot["obs"] = self.obs
@@ -222,11 +235,11 @@ class Celltype:
         Number of peaks: {self.peak_annot.shape[0]}
         """
 
-
     def load_gene_annot(self):
         """Load gene annotations from feather file."""
         if not path_exists_with_s3(self.gene_feather_path, s3_file_sys=self.s3_file_sys):
-            print("Gene exp feather not found. Constructing gene annotation from gencode...")
+            print(
+                "Gene exp feather not found. Constructing gene annotation from gencode...")
             # construct gene annotation from gencode
             from pyranges import PyRanges as pr
 
@@ -246,7 +259,8 @@ class Celltype:
         else:
             print("Gene exp feather found. Loading...")
             gene_annot = pd.read_feather(self.gene_feather_path)
-            gene_annot["Strand"] = gene_annot["Strand"].apply(lambda x: 0 if x == "+" else 1)
+            gene_annot["Strand"] = gene_annot["Strand"].apply(
+                lambda x: 0 if x == "+" else 1)
         if self.gene_feather_path.endswith(".exp.feather"):
             gene_annot = (
                 gene_annot.groupby(["gene_name", "Strand"])["index"]
@@ -282,7 +296,8 @@ class Celltype:
                 self.tss_start[i],
                 self.tss_strand[i],
             )
-            jacobs.append((self.get_tss_jacobian(self.jacobs[i], tss, multiply_input)))
+            jacobs.append((self.get_tss_jacobian(
+                self.jacobs[i], tss, multiply_input)))
         return jacobs
 
     def get_input_data(self, peak_id=None, focus=None, start=None, end=None):
@@ -296,12 +311,14 @@ class Celltype:
 
     def get_tss_jacobian(self, jacob: np.ndarray, tss: TSS, multiply_input=True):
         """Get the jacobian of a TSS."""
-        jacob = jacob.reshape(-1, self.num_region_per_sample, self.num_features)
+        jacob = jacob.reshape(-1, self.num_region_per_sample,
+                              self.num_features)
         if multiply_input:
             input = self.get_input_data(peak_id=tss.peak_id, focus=self.focus)
             jacob = jacob * input
         region = tss.get_sample_from_peak(self.peak_annot, self.focus)
-        tss_jacob = OneTSSJacobian(jacob, tss, region, self.features, self.num_cls)
+        tss_jacob = OneTSSJacobian(
+            jacob, tss, region, self.features, self.num_cls)
         return tss_jacob
 
     def gene_jacobian_summary(self, gene, axis="motif", multiply_input=True):
@@ -334,13 +351,13 @@ class Celltype:
                 .Score.sum()
                 .reset_index()
             )
-    
+
     @property
     def gene_by_motif(self):
         if self._gene_by_motif is None:
             self._gene_by_motif = self.get_gene_by_motif()
         return self._gene_by_motif
-    
+
     @gene_by_motif.setter
     def gene_by_motif(self, value):
         self._gene_by_motif = value
@@ -382,7 +399,8 @@ class Celltype:
                         jacobs.append(j.motif_summary().T)
                 jacobs_df = pd.concat(jacobs, axis=1).T
                 # save to zarr
-                self._zarr_data.array("gene_by_motif", jacobs_df.values, dtype="float32")
+                self._zarr_data.array(
+                    "gene_by_motif", jacobs_df.values, dtype="float32")
                 self._gene_by_motif = jacobs_df
         elif path_exists_with_s3(
             f"{self.interpret_dir}/{self.celltype}_gene_by_motif.feather",
@@ -411,15 +429,17 @@ class Celltype:
             )
             if path_exists_with_s3(os.path.join(self.interpret_cell_dir, f"{self.celltype}.zarr"), s3_file_sys=self.s3_file_sys):
                 if 'gene_by_motif_corr' in self._zarr_data.keys():
-                    self._gene_by_motif.corr = pd.DataFrame(self._zarr_data["gene_by_motif_corr"], columns=self.features, index=self.features)
-                    
+                    self._gene_by_motif.corr = pd.DataFrame(
+                        self._zarr_data["gene_by_motif_corr"], columns=self.features, index=self.features)
+
                 else:
                     # compute corr and save to zarr also
-                    self._zarr_data.array("gene_by_motif_corr", self._gene_by_motif.get_corr().values, dtype="float32")
+                    self._zarr_data.array(
+                        "gene_by_motif_corr", self._gene_by_motif.get_corr().values, dtype="float32")
 
         return self._gene_by_motif
 
-    def get_tf_pathway(self, tf, gp = None, quantile_cutoff=0.9, exp_cutoff=0, filter_str='term_size<1000 & term_size>500', significance_threshold_method='g_SCS'):
+    def get_tf_pathway(self, tf, gp=None, quantile_cutoff=0.9, exp_cutoff=0, filter_str='term_size<1000 & term_size>500', significance_threshold_method='g_SCS'):
         """
         This function retrieves the pathway for a given transcription factor (tf) using g:Profiler.
 
@@ -439,13 +459,17 @@ class Celltype:
             from gprofiler import GProfiler
             gp = GProfiler(return_dataframe=True)
 
-        selected_index = (self.gene_by_motif.data[tf]>self.gene_by_motif.data[tf].quantile(quantile_cutoff))
-        gene_list = self.gene_annot.loc[selected_index].query('pred>@exp_cutoff').gene_name.unique()
-        go = gp.profile(organism='hsapiens', query=list(gene_list), user_threshold=0.05, no_evidences=False, significance_threshold_method=significance_threshold_method)
+        selected_index = (
+            self.gene_by_motif.data[tf] > self.gene_by_motif.data[tf].quantile(quantile_cutoff))
+        gene_list = self.gene_annot.loc[selected_index].query(
+            'pred>@exp_cutoff').gene_name.unique()
+        go = gp.profile(organism='hsapiens', query=list(gene_list), user_threshold=0.05,
+                        no_evidences=False, significance_threshold_method=significance_threshold_method)
         go_filtered = go.query(filter_str)
-        pathway_genes = np.unique(np.concatenate(go_filtered.intersections.values))
+        pathway_genes = np.unique(np.concatenate(
+            go_filtered.intersections.values))
         return go_filtered, pathway_genes
-    
+
     def get_highest_exp_genes(self, genes):
         '''
         This code takes in a list of genes and returns the gene with the highest expression value. 
@@ -454,7 +478,7 @@ class Celltype:
 
     def get_genes_exp(self, genes):
         return self.gene_annot.query(f'gene_name.isin(@genes)').sort_values('pred', ascending=False)
-    
+
     def get_tf_exp_str(self, motif, m):
         """
         This method generates a formatted string of gene names and their corresponding predicted expression values.
@@ -475,7 +499,8 @@ class Celltype:
         if m not in motif.cluster_gene_list.keys():
             return m
         motif_cluster_genes = motif.cluster_gene_list[m]
-        motif_cluster_genes_exp = self.get_genes_exp(motif_cluster_genes).groupby('gene_name').pred.mean().sort_values(ascending=False)
+        motif_cluster_genes_exp = self.get_genes_exp(motif_cluster_genes).groupby(
+            'gene_name').pred.mean().sort_values(ascending=False)
         # turn in to a formated table in one string: gene_name\tpred, 2 digit floating point
         return '<br />'.join([f'{gene_name}\t{pred:.2f}' for gene_name, pred in motif_cluster_genes_exp.items()])
 
@@ -493,7 +518,8 @@ class Celltype:
         if m not in motif.cluster_gene_list.keys():
             return np.nan
         motif_cluster_genes = motif.cluster_gene_list[m]
-        motif_cluster_genes_exp = self.get_genes_exp(motif_cluster_genes).groupby('gene_name').pred.mean()
+        motif_cluster_genes_exp = self.get_genes_exp(
+            motif_cluster_genes).groupby('gene_name').pred.mean()
         return motif_cluster_genes_exp.mean()
 
     def get_gene_pred(self, gene_name: str):
@@ -543,7 +569,8 @@ class Celltype:
     def get_gene_chromosome(self, gene_name: str):
         """Get the chromosome of a gene."""
         if gene_name not in self.gene_annot["gene_name"].tolist():
-            raise gr.Error("This gene's promoter is not in this cell type's open chromatin.")
+            raise gr.Error(
+                "This gene's promoter is not in this cell type's open chromatin.")
         return self.gene_annot[self.gene_annot["gene_name"] == gene_name][
             "Chromosome"
         ].values[0]
@@ -567,31 +594,35 @@ class Celltype:
     def plot_gene_motifs(self, gene, motif, overwrite=False):
         r = self.get_gene_jacobian_summary(gene, 'motif')
         m = r.sort_values(ascending=False).head(10).index.values
-        fig, ax = plt.subplots(2, 5, figsize=(10, 4), sharex=False, sharey=False)
+        fig, ax = plt.subplots(2, 5, figsize=(
+            10, 4), sharex=False, sharey=False)
         for i, m_i in enumerate(m):
             if not path_exists_with_s3(
                 file_path=f'{self.assets_dir}{m_i.replace("/", "_")}.png',
                 s3_file_sys=self.s3_file_sys
-            ) or overwrite==True:
-                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(filename=f'{self.assets_dir}{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
+            ) or overwrite == True:
+                motif.get_motif_cluster_by_name(m_i).seed_motif.plot_logo(
+                    filename=f'{self.assets_dir}{m_i.replace("/", "_")}.png', logo_title='', size='medium', ic_scale=True)
             # show logo in ax[i] from the png file
             if self.s3_file_sys:
                 with self.s3_file_sys.open(f'{self.assets_dir}{m_i.replace("/", "_")}.png', "rb") as f:
                     img = plt.imread(BytesIO(f.read()))
             else:
-                img = plt.imread(f'{self.assets_dir}{m_i.replace("/", "_")}.png')
-            ax[i//5][i%5].imshow(img)
-            ax[i//5][i%5].axis('off')
+                img = plt.imread(
+                    f'{self.assets_dir}{m_i.replace("/", "_")}.png')
+            ax[i//5][i % 5].imshow(img)
+            ax[i//5][i % 5].axis('off')
             # add title to highest expressed gene
             if m_i in motif.cluster_gene_list.keys():
                 motif_cluster_genes = motif.cluster_gene_list[m_i]
             try:
-                ax[i//5][i%5].set_title(f'{m_i}:{self.get_highest_exp_genes(motif_cluster_genes)}')
+                ax[i//5][i %
+                         5].set_title(f'{m_i}:{self.get_highest_exp_genes(motif_cluster_genes)}')
             except:
-                ax[i//5][i%5].set_title(f'{m_i}')
-            
+                ax[i//5][i % 5].set_title(f'{m_i}')
+
         return fig, ax
-    
+
     def plotly_motif_subnet(self, motif, m, type='neighbors', threshold='auto'):
         """
         Plots a subnet of motifs.
@@ -610,22 +641,26 @@ class Celltype:
         """
         causal = self.gene_by_motif.get_causal()
         if threshold == 'auto':
-            threshold = pd.DataFrame(causal.edges(data='weight'), columns=['From', 'To', 'Weight']).sort_values('Weight').Weight.abs().quantile(0.7)
+            threshold = pd.DataFrame(causal.edges(data='weight'), columns=[
+                                     'From', 'To', 'Weight']).sort_values('Weight').Weight.abs().quantile(0.7)
         subnet = preprocess_net(causal.copy(), threshold)
         subnet = get_subnet(subnet, m, type)
-        tf_exp_str = {m:self.get_tf_exp_str(motif, m) for m in motif.cluster_names}
+        tf_exp_str = {m: self.get_tf_exp_str(
+            motif, m) for m in motif.cluster_names}
         tf_exp_str['Accessiblity'] = ['TSS Accessibility']
-        tf_exp_mean = {m:self.get_tf_exp_mean(motif, m) for m in motif.cluster_names}
+        tf_exp_mean = {m: self.get_tf_exp_mean(
+            motif, m) for m in motif.cluster_names}
         tf_exp_mean['Accessiblity'] = [50]
         return plotly_networkx_digraph(subnet, tf_exp_str, tf_exp_mean)
 
     def plotly_gene_exp(self):
-        import plotly.express as px
         import pandas as pd
+        import plotly.express as px
         df = pd.DataFrame(self.gene_annot)
-        fig = px.scatter(df.groupby('gene_name')[['obs', 'pred','accessibility']].mean().reset_index(), x='obs', y='pred', color='accessibility', hover_name='gene_name', 
-                        labels={'obs': 'Observed log10 TPM', 'pred': 'Predicted log10 TPM', 'accessibility': 'TSS Accessibility'},
-                        template='plotly_white', width=600, height=500, opacity=0.5, marginal_x='histogram', marginal_y='histogram')
+        fig = px.scatter(df.groupby('gene_name')[['obs', 'pred', 'accessibility']].mean().reset_index(), x='obs', y='pred', color='accessibility', hover_name='gene_name',
+                         labels={'obs': 'Observed log10 TPM', 'pred': 'Predicted log10 TPM',
+                                 'accessibility': 'TSS Accessibility'},
+                         template='plotly_white', width=600, height=500, opacity=0.5, marginal_x='histogram', marginal_y='histogram')
         # add a text annotation of pearson correlation
         fig.add_annotation(
             x=0.1,
@@ -673,7 +708,8 @@ class Celltype:
         r['End'] = self.peak_annot.iloc[r['index'].values].End.values
         r = r[['index', 'Chromosome', 'Start', 'End', 'Score']]
         r = r.query(f'Chromosome==@r.iloc[{self.focus}].Chromosome')
-        r_motif = pd.concat([j.data for j in js],axis=0).drop(['Chromosome', 'Start', 'End'], axis=1).groupby('index').mean()
+        r_motif = pd.concat([j.data for j in js], axis=0).drop(
+            ['Chromosome', 'Start', 'End'], axis=1).groupby('index').mean()
         r = r.merge(r_motif, left_on='index', right_index=True)
         if plotly:
             return self.plot_region_plotly(r)
@@ -692,34 +728,38 @@ class Celltype:
 
         fig, ax = plt.subplots(figsize=(10, 2))
         for i, row in df.iterrows():
-            ax.add_patch(plt.Rectangle((row.X, 0), row.Width, row.Height, color='red'))
+            ax.add_patch(plt.Rectangle(
+                (row.X, 0), row.Width, row.Height, color='red'))
         ax.set_xlim(df.Start.min(), df.End.max())
         # add y=0
         ax.plot([df.Start.min(), df.End.max()], [0, 0], color='black')
         ax.set_ylim(0, 1)
         ax.set_yticks([])
-        ax.set_xlabel(f'Genomic Position on Chromosome {df.Chromosome.iloc[0][3:]}')
+        ax.set_xlabel(
+            f'Genomic Position on Chromosome {df.Chromosome.iloc[0][3:]}')
         # remove top and right spines
         sns.despine(ax=ax, top=True, right=True, left=True, bottom=False)
         return fig, ax
 
     def plot_region_plotly(self, df: pd.DataFrame) -> go.Figure:
         # Create a subplot with 2 vertical panels; the second panel will be used for gene annotations
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.8, 0.2])
-        
-        hover_text = df.apply(lambda row: f"{row['Chromosome']}:{row['Start']}-{row['End']}<br />Top 5 motifs: {', '.join(row.iloc[5:].sort_values()[-5:].index.values)}<br />Bottom 5 motifs: {', '.join(row.iloc[5:].sort_values()[:5].index.values)}", axis=1)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                            vertical_spacing=0.1, row_heights=[0.8, 0.2])
+
+        hover_text = df.apply(
+            lambda row: f"{row['Chromosome']}:{row['Start']}-{row['End']}<br />Top 5 motifs: {', '.join(row.iloc[5:].sort_values()[-5:].index.values)}<br />Bottom 5 motifs: {', '.join(row.iloc[5:].sort_values()[:5].index.values)}", axis=1)
         df['HoverText'] = hover_text
 
         # Process main DataFrame to sort by 'Score' and normalize height
         sorted_df = df.sort_values('Score', ascending=False)
         max_score = sorted_df['Score'].abs().max()
         sorted_df['NormalizedHeight'] = sorted_df['Score'].abs() / max_score
-        
+
         # Compute genomic span, normalized positions, and heights
         genomic_span = sorted_df['End'].max() - sorted_df['Start'].min()
         x_positions = (sorted_df['Start'] + sorted_df['End'])/2
         heights = sorted_df['NormalizedHeight']
-        
+
         # Add bars from x-axis to scores
         x_bar, y_bar = [], []
         for x_coord, y_coord in zip(x_positions, heights):
@@ -741,14 +781,16 @@ class Celltype:
             row=1, col=1
         )
         # add a scatter trace for each bar for top 10 % positions
-        top10 = sorted_df.sort_values('NormalizedHeight', ascending=False).head(int(len(sorted_df)*0.1))
+        top10 = sorted_df.sort_values(
+            'NormalizedHeight', ascending=False).head(int(len(sorted_df)*0.1))
 
         fig.add_trace(
             go.Scatter(
                 x=top10['Start'],
                 y=top10['NormalizedHeight'],
                 mode='markers',
-                marker=dict(color=top10['NormalizedHeight'], colorscale='plotly3'),
+                marker=dict(
+                    color=top10['NormalizedHeight'], colorscale='plotly3'),
                 text=top10['HoverText'],
                 hoverinfo='text'
             ),
@@ -758,15 +800,17 @@ class Celltype:
         gene_start = sorted_df['Start'].min()
         gene_end = sorted_df['End'].max()
         chromosome = sorted_df.iloc[0].Chromosome
-        genes_to_show = self.gene_annot.query(f'Chromosome==@chromosome and Start>=@gene_start and Start<=@gene_end')
-        
+        genes_to_show = self.gene_annot.query(
+            f'Chromosome==@chromosome and Start>=@gene_start and Start<=@gene_end')
+
         # Add scatter trace for gene annotations
         fig.add_trace(
             go.Scatter(
                 x=genes_to_show['Start'],
                 y=genes_to_show['Strand'],
                 mode='markers',
-                marker=dict(color=genes_to_show['Strand'], colorscale='spectral'),
+                marker=dict(
+                    color=genes_to_show['Strand'], colorscale='spectral'),
                 text=genes_to_show['gene_name'],
                 hoverinfo='text'
             ),
@@ -774,18 +818,21 @@ class Celltype:
         )
 
         # set y-axis ticks for gene annotations (0: '+', 1: '-')
-        fig.update_yaxes(row=2, col=1, tickmode='array', tickvals=[0, 1], ticktext=['+', '-'])
-        
+        fig.update_yaxes(row=2, col=1, tickmode='array',
+                         tickvals=[0, 1], ticktext=['+', '-'])
+
         # Update layout
         chrom_id = sorted_df.iloc[0]['Chromosome'][3:]
         fig.update_layout(
-            xaxis=dict(range=[sorted_df['Start'].min(), sorted_df['End'].max()], title=f'Genomic Position on Chromosome {chrom_id}'),
+            xaxis=dict(range=[sorted_df['Start'].min(), sorted_df['End'].max(
+            )], title=f'Genomic Position on Chromosome {chrom_id}'),
             yaxis=dict(range=[0, 1.2], showticklabels=False),
             showlegend=False,
             plot_bgcolor='white'
         )
 
         return fig
+
 
 class GETCellType(Celltype):
     def __init__(self, celltype, config):
@@ -832,10 +879,12 @@ class OneTSSJacobian:
         # check if the data dimension is correct:
         # (num_cls, num_region_per_sample, num_features)
         assert (
-            data.reshape(-1).shape[0] == num_cls * num_region_per_sample * num_features
+            data.reshape(-1).shape[0] == num_cls *
+            num_region_per_sample * num_features
         )
         self.TSS = tss
-        data = data.reshape(num_cls, num_region_per_sample, num_features)[tss.strand]
+        data = data.reshape(num_cls, num_region_per_sample,
+                            num_features)[tss.strand]
         data_df = pd.DataFrame(data, columns=features)
         data_df = pd.concat(
             [region.reset_index(drop=True), data_df.reset_index(drop=True)],
@@ -916,7 +965,7 @@ class OneTSSJacobian:
         gene = self.TSS.gene_name
         # get a dataframe of {'Chromosome', 'Start', 'End', 'Gene', 'Strand', 'Start', 'Pred', 'Accessibility', 'Motif', 'Score'}
         df = self.peak_annot.iloc[
-            start_idx : start_idx + self.num_region_per_sample
+            start_idx: start_idx + self.num_region_per_sample
         ].copy()[["Chromosome", "Start", "End"]]
         df = df.iloc[rows]
         df["Motif"] = [self.data.columns[m] for m in cols]
@@ -925,7 +974,8 @@ class OneTSSJacobian:
         df["Strand"] = self.TSS.strand
         df["TSS"] = self.TSS.start
         df = df[
-            ["Chromosome", "Start", "End", "Gene", "Strand", "TSS", "Motif", "Score"]
+            ["Chromosome", "Start", "End", "Gene",
+                "Strand", "TSS", "Motif", "Score"]
         ]
         return df
 
@@ -946,7 +996,7 @@ class GeneByMotif(object):
         self.s3_file_sys = s3_file_sys
         self._corr = None
         self._causal = None
-    
+
     def __repr__(self) -> str:
         return f"""Celltype: {self.celltype}
         Jacob shape: {self.data.shape}
@@ -962,7 +1012,7 @@ class GeneByMotif(object):
     @corr.setter
     def corr(self, value):
         self._corr = value
-    
+
     def get_corr(self, method="spearman", diagal_to_zero=True):
         """Get the motif correlation."""
         corr = self.data.corr(method=method)
@@ -976,33 +1026,35 @@ class GeneByMotif(object):
         if self._causal is None:
             self._causal = self.get_causal()
         return self._causal
-    
+
     @causal.setter
     def causal(self, value):
         self._causal = value
-            
+
     def get_causal(self, edgelist_file=None, permute_columns=True, n=3, overwrite=False):
         if edgelist_file is not None and path_exists_with_s3(
             edgelist_file, s3_file_sys=self.s3_file_sys
         ) and not overwrite:
             return nx.read_weighted_edgelist(edgelist_file, create_using=nx.DiGraph)
-        
-        zarr_data_path = os.path.join(self.interpret_dir, self.celltype, "allgenes", f"{self.celltype}.zarr")
-        
+
+        zarr_data_path = os.path.join(
+            self.interpret_dir, self.celltype, "allgenes", f"{self.celltype}.zarr")
+
         if path_exists_with_s3(zarr_data_path+"/causal", s3_file_sys=self.s3_file_sys) and not overwrite:
             return self.load_causal_from_zarr(zarr_data_path)
-        
+
         data = zscore(self.data, axis=0)
-        
+
         zarr_data = load_zarr_with_s3(
             zarr_data_path,
             mode="a",
             s3_file_sys=self.s3_file_sys
         )
-        
+
         for i in tqdm(range(n)):
             if not f"causal_{i}" in zarr_data.keys() or overwrite:
-                permuted_data = data.iloc[:, np.random.permutation(data.shape[1])] if permute_columns else data.copy()
+                permuted_data = data.iloc[:, np.random.permutation(
+                    data.shape[1])] if permute_columns else data.copy()
                 causal_g = self.create_causal_graph(permuted_data)
                 self.save_causal_to_zarr(zarr_data, causal_g, i)
 
@@ -1010,12 +1062,14 @@ class GeneByMotif(object):
         average_causal = self.compute_average_causal(zarr_data, n)
 
         # Save the average to 'causal' in zarr
-        zarr_data.array("causal", average_causal, dtype="float32", overwrite=True)
-        
+        zarr_data.array("causal", average_causal,
+                        dtype="float32", overwrite=True)
+
         # create networkx graph from average_causal
         causal_g = nx.from_numpy_array(average_causal, create_using=nx.DiGraph)
-        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
-                
+        causal_g = nx.relabel_nodes(causal_g, dict(
+            zip(range(len(self.data.columns)), self.data.columns)))
+
         if edgelist_file:
             nx.write_weighted_edgelist(causal_g, edgelist_file)
 
@@ -1023,12 +1077,14 @@ class GeneByMotif(object):
 
     def load_causal_from_zarr(self, zarr_data_path):
         zarr_data = load_zarr_with_s3(
-            file_path=zarr_data_path, 
+            file_path=zarr_data_path,
             mode="a",
             s3_file_sys=self.s3_file_sys
         )
-        causal_g = nx.from_numpy_array(zarr_data["causal"][:], create_using=nx.DiGraph)
-        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
+        causal_g = nx.from_numpy_array(
+            zarr_data["causal"][:], create_using=nx.DiGraph)
+        causal_g = nx.relabel_nodes(causal_g, dict(
+            zip(range(len(self.data.columns)), self.data.columns)))
         return causal_g
 
     def create_causal_graph(self, data):
@@ -1040,15 +1096,19 @@ class GeneByMotif(object):
         model = cdt.causality.graph.LiNGAM()
         output = model.predict(data)
         causal_g = preprocess_net(output.copy())
-        causal_g_numpy = nx.to_numpy_array(causal_g, dtype="float32", nodelist=self.data.columns)
+        causal_g_numpy = nx.to_numpy_array(
+            causal_g, dtype="float32", nodelist=self.data.columns)
         causal_g = nx.from_numpy_array(causal_g_numpy, create_using=nx.DiGraph)
-        causal_g = nx.relabel_nodes(causal_g, dict(zip(range(len(self.data.columns)), self.data.columns)))
+        causal_g = nx.relabel_nodes(causal_g, dict(
+            zip(range(len(self.data.columns)), self.data.columns)))
         return causal_g
 
     def save_causal_to_zarr(self, zarr_data, causal_g, index):
-        causal_g_numpy = nx.to_numpy_array(causal_g, dtype="float32", nodelist=self.data.columns)
-        zarr_data.array(f"causal_{index}", causal_g_numpy, dtype="float32", overwrite=True)
-    
+        causal_g_numpy = nx.to_numpy_array(
+            causal_g, dtype="float32", nodelist=self.data.columns)
+        zarr_data.array(f"causal_{index}", causal_g_numpy,
+                        dtype="float32", overwrite=True)
+
     def compute_average_causal(self, zarr_data, n):
         causal_arrays = [zarr_data[f"causal_{i}"] for i in range(n)]
         average_causal = np.mean(causal_arrays, axis=0)
@@ -1058,4 +1118,3 @@ class GeneByMotif(object):
         for i in range(df.shape[0]):
             df.iloc[i, i] = 0
         return df
-
