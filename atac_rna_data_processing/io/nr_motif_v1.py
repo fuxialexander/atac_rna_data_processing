@@ -6,7 +6,96 @@ except:
     print("MOODS not installed. Please install MOODS to use the reverse_complement function.")
 import os 
 from .motif import *
-    
+
+other_gene_mapping = {
+    "ARI5B": "ARID5B",
+    "HXA13": "HOXA13",
+    "ATF6A": "ATF6",
+    "HNF6": "ONECUT1",
+    "DMRTB": "DMRTB1",
+    "COE1": "EBF1",
+    "EVI1": "MECOM",
+    "EWSR1-FLI1": "EWSR1-FLI1",
+    "ITF2": "TCF4",
+    "ARNTL": "BMAL1",
+    "BHE40": "BHLHE40",
+    "BHLHB3": "BHLHE41",
+    "BHLHB2": "BHLHE40",
+    "NGN2": "NEUROG2",
+    "TWST1": "TWIST1",
+    "NDF2": "NEUROD2",
+    "NDF1": "NEUROD1",
+    "ZNF238": "ZBTB18",
+    "BHA15": "BHLHA15",
+    "TFE2": "TCF3",
+    "ANDR": "AR",
+    "HXA10": "HOXA10",
+    "HXC9": "HOXC9",
+    "HXA9": "HOXA9",
+    "HXA1": "HOXA1",
+    "HXB7": "HOXB7",
+    "HXB8": "HOXB8",
+    "HXC9": "HOXC9",
+    "HXB13": "HOXB13",
+    "HXB4": "HOXB4",
+    "RAXL1": "RAX2",
+    "MIX-A": "MIXL1",
+    "CART1": "ALX1",
+    "HEN1": "NHLH1",
+    "KAISO": "ZBTB33",
+    "MYBA": "MYBL1",
+    "TF65": "RELA",
+    "DUX": "DUX1",
+    "STF1": "NR5A1",
+    "ERR2": "ESRRB",
+    "COT1": "NR2F1",
+    "COT2": "NR2F2",
+    "THA": "THRA",
+    "THB": "THRB",
+    "NR1A4": "RXRA",
+    "RORG": "RORC",
+    "ANDR": "AR",
+    "PRGR": "PGR",
+    "GCR": "NR3C1",
+    "ERR3": "ESRRG",
+    "ERR1": "ESRRA",
+    "PO3F1": "POU3F1",
+    "PO3F2": "POU3F2",
+    "PO5F1": "POU5F1",
+    "P53": "TP53",
+    "P73": "TP73",
+    "P63": "TP63",
+    "POU5F1P1": "POU5F1B",
+    "PO2F2": "POU2F2",
+    "PO2F1": "POU2F1",
+    "SUH": "RBPJ",
+    "PEBB": "CBFB",
+    "SRBP1": "SREBF1",
+    "SRBP2": "SREBF2",
+    "T": "TBXT",
+    "BRAC": "TBXT",
+    "TF2L1": "TFCP2L1",
+    "TYY1": "YY1",
+    "ZKSC1": "ZKSCAN1",
+    "THA11": "THAP11",
+    "OZF": "ZNF146",
+    "ZNF306": "ZKSCAN3",
+    "Z324A": "ZNF324",
+    "AP2A": "TFAP2A",
+    "AP2B": "TFAP2B",
+    "AP2C": "TFAP2C",
+    "TF7L1": "TCF7L1",
+    "TF7L2": "TCF7L2",
+    "STA5B": "STAT5B",
+    "STA5A": "STAT5A",
+    "BC11A": "BCL11A",
+    "Z354A": "ZNF354A",
+    "HINFP1": "HINFP",
+    "PIT1": "POU1F1",
+    "HTF4": "TCF12",
+    "ZNF435": "ZSCAN16"
+}
+
 def fix_gene_name(x: str):
     if x.startswith('ZN') and not x.startswith('ZNF'):
         x = x.replace('ZN', 'ZNF')
@@ -18,38 +107,18 @@ def fix_gene_name(x: str):
         x = 'PKNOX1'
     if x.startswith('NKX') and '-' not in x:
         x = x[:-1] + '-' + x[-1]
-    if x == 'HTF4':
-        x = 'TCF12'
     if x.startswith('PRD') and not x.startswith('PRDM'):
         x = x.replace('PRD', 'PRDM')
-    if x.startswith('PIT1'):
-        x = 'POU1F1'
-    if x == 'HINFP1':
-        x = 'HINFP'
     if x.startswith('NFAC'):
         x = x.replace('NFAC', 'NFATC')
-    if x == 'AP2A':
-        x = 'TFAP2A'
-    if x == 'AP2B':
-        x = 'TFAP2B'
-    if x == 'AP2C':
-        x = 'TFAP2C'
-    if x == 'TF7L1':
-        x = 'TCF7L1'
-    if x == 'TF7L2':
-        x = 'TCF7L2'
-    if x == 'STA5B':
-        x = 'STAT5B'
-    if x == 'STA5A':
-        x = 'STAT5A'
-    if x == 'BC11A':
-        x = 'BCL11A'
-    if x == 'Z354A':
-        x = 'ZNF354A'
     if x.startswith('SMCA'):
         x = x.replace('SMCA', 'SMARCA')
     if x.startswith('ZBT') and not x.startswith('ZBTB'):
         x = x.replace('ZBT', 'ZBTB')
+    # other mappings
+    for k, v in other_gene_mapping.items():
+        if x.startswith(k):
+            x = v
     return x
     
 class NrMotifV1(MotifClusterCollection):

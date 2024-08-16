@@ -71,7 +71,7 @@ class Celltype:
         self.gene_feather_path = f"{self.data_dir}{celltype}.exp.feather"
         if path_exists_with_s3(
             os.path.join(self.interpret_cell_dir,
-                         f"{self.celltype}/allgenes/{self.celltype}.zarr"),
+                         f"{self.celltype}.zarr"),
             s3_file_sys=self.s3_file_sys
         ):
             self._zarr_data = load_zarr_with_s3(
@@ -347,7 +347,7 @@ class Celltype:
             # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
             return (
                 pd.concat([j.summarize(axis="region") for j in gene_jacobs])
-                .groupby(["index", "Chromosome", "Start"])
+                .groupby(["index", "Chromosome", "Start", "End"])
                 .Score.sum()
                 .reset_index()
             )
@@ -586,7 +586,7 @@ class Celltype:
             # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
             return (
                 pd.concat([j.summarize(axis="region") for j in gene_jacobs])
-                .groupby(["index", "Chromosome", "Start"])
+                .groupby(["index", "Chromosome", "Start", "End"])
                 .Score.sum()
                 .reset_index()
             )
@@ -863,6 +863,98 @@ class GETCellType(Celltype):
         )
 
 
+class GETHydraCellType(Celltype):
+    def __init__(
+        self,
+        celltype,
+        zarr_path,
+        motif_path,
+    ):
+        self.celltype = celltype
+        self.zarr_path = zarr_path
+        self.motif = NrMotifV1.load_from_pickle(motif_path)
+
+        self._load_zarr_data()
+        # Initialize parent class attributes
+        self.features = list(self.motif.cluster_names) + ['Accessibility']
+        self.num_features = len(self.features)
+        self.num_region_per_sample = self._zarr_data['input'].shape[1]
+        self.num_cls = self._zarr_data['preds']['exp'].shape[2]
+        self._process_data()
+
+    def _load_zarr_data(self):
+        self._zarr_data = zarr.open(self.zarr_path, mode='r')
+        self.genelist = [
+            x.strip(' ') for x in self._zarr_data['avaliable_genes'][:].reshape(-1)]
+
+    def _process_data(self):
+        self.focus = self._zarr_data['focus'][:]
+        df = []
+        for i in range(self.focus.shape[0]):
+            focus_idx = self.focus[i][self.focus[i] > 0].astype(int)
+            strand = int(self._zarr_data['strand'][i])
+            pred_values = self._zarr_data['preds']['exp'][i,
+                                                          :, strand][focus_idx]
+            obs_values = self._zarr_data['obs']['exp'][i, :, strand][focus_idx]
+            pred_max_idx = np.argmax(pred_values)
+            focus_represent_idx = int(focus_idx[pred_max_idx])
+
+            gene_annot = {
+                'gene_name': self.genelist[i].strip(' '),
+                'Chromosome': self._zarr_data['chromosome'][:].reshape(-1)[i],
+                'Start': self._zarr_data['peak_coord'][i, focus_represent_idx, 0].astype(int),
+                'End': self._zarr_data['peak_coord'][i, focus_represent_idx, 0].astype(int),
+                'Strand': strand,
+                'pred': pred_values[pred_max_idx],
+                'obs': obs_values[pred_max_idx],
+                'accessibility': self._zarr_data['input'][i, focus_represent_idx, -1],
+            }
+            df.append(gene_annot)
+        self.gene_annot = pd.DataFrame(df)
+        self.peak_annot = pd.DataFrame({
+            'Chromosome': np.repeat(self._zarr_data['chromosome'][:], self.num_region_per_sample),
+            'Start': self._zarr_data['peak_coord'][:, :, 0].flatten().astype(int),
+            'End': self._zarr_data['peak_coord'][:, :, 1].flatten().astype(int),
+            'Gene': np.repeat(self.genelist, self.num_region_per_sample),
+        }).reset_index()
+
+    def get_gene_idx(self, gene_name: str):
+        return self.gene_annot[self.gene_annot["gene_name"] == gene_name].index[0]
+
+    def get_gene_strand(self, gene_name: str):
+        return self.gene_annot[self.gene_annot["gene_name"] == gene_name]["Strand"].values[0]
+
+    def get_gene_jacobian(self, gene_name: str, multiply_input=True):
+        i = self.get_gene_idx(gene_name)
+        strand = self.get_gene_strand(gene_name)
+        jacob = self._zarr_data['jacobians']['exp'][str(strand)]['input'][i]
+        input = self._zarr_data['input'][i]
+        if multiply_input:
+            jacob = jacob * input
+
+        return [OneGeneJacobian(gene_name, jacob, self.peak_annot.query(f"Gene == '{gene_name}'"), self.features, self.num_cls, self.num_region_per_sample, self.num_features)]
+
+    def get_gene_chromosome(self, gene_name: str):
+        return self.gene_annot[self.gene_annot["gene_name"] == gene_name]["Chromosome"].values[0]
+
+    def __repr__(self) -> str:
+        return f"""GETHydraCelltype: {self.celltype}
+        Zarr path: {self.zarr_path}
+        Number of regions per sample: {self.num_region_per_sample}
+        Number of features: {self.num_features}
+        Number of genes: {len(self.genelist)}
+        Number of peaks: {len(self.peak_annot)}
+        """
+
+    # class method create from config
+    @classmethod
+    def from_config(cls, cfg):
+        return cls(
+            celltype=f"{cfg.dataset.leave_out_celltypes}",
+            zarr_path=f"{cfg.machine.output_dir}/{cfg.wandb.project_name}/{cfg.wandb.run_name}.zarr",
+            motif_path=pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
+        )
+
 class OneTSSJacobian:
     """Jacobian data for one TSS."""
 
@@ -938,7 +1030,7 @@ class OneTSSJacobian:
         # if stats is a function
         elif callable(stats):
             region_data = data.apply(stats, axis=1)
-        data = self.data.iloc[:, 0:3]
+        data = self.data.iloc[:, 0:4]
         data["Score"] = region_data
         return data
 
@@ -978,6 +1070,38 @@ class OneTSSJacobian:
                 "Strand", "TSS", "Motif", "Score"]
         ]
         return df
+
+
+class OneGeneJacobian(OneTSSJacobian):
+    """Jacobian data for one gene"""
+
+    def __init__(
+        self,
+        gene_name: str,
+        data: np.ndarray,
+        region: pd.DataFrame,
+        features: list,
+        num_cls=2,
+        num_region_per_sample=200,
+        num_features=283,
+    ) -> None:
+        self.gene_name = gene_name
+        data_df = pd.DataFrame(data, columns=features)
+        data_df = pd.concat(
+            [region.reset_index(drop=True), data_df.reset_index(drop=True)],
+            axis=1,
+            ignore_index=True,
+        )
+        data_df.columns = region.columns.tolist() + list(features)
+        self.data = data_df
+        self.num_cls = num_cls
+        self.features = features
+        self.num_region_per_sample = num_region_per_sample
+        self.num_features = num_features
+
+    def __repr__(self) -> str:
+        return f"""Gene: {self.gene_name}
+        """
 
 
 class GeneByMotif(object):
@@ -1118,3 +1242,11 @@ class GeneByMotif(object):
         for i in range(df.shape[0]):
             df.iloc[i, i] = 0
         return df
+
+def celltype_factory(celltype_class, cell_id, config, zarr_path=None, motif_path=None):
+    if celltype_class == "GETCelltype":
+        return GETCellType(cell_id, config)
+    elif celltype_class == "GETHydraCelltype":
+        return GETHydraCellType(cell_id, config, zarr_path, motif_path)
+    else:
+        raise ValueError(f"Unknown celltype class: {celltype_class}")
