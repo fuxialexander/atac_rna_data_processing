@@ -5,7 +5,9 @@
 import random
 import re
 import time
+from omegaconf import DictConfig
 import pandas as pd
+import pkg_resources
 import requests
 from pysam import VariantFile
 from tqdm import tqdm
@@ -27,7 +29,7 @@ import gradio as gr
 
 from atac_rna_data_processing.config.load_config import load_config
 from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
-from atac_rna_data_processing.io.celltype import GETCellType
+from atac_rna_data_processing.io.celltype import GETCellType, GETHydraCellType
 from atac_rna_data_processing.io.region import *
 from atac_rna_data_processing.io.sequence import (DNASequence,
                                                   DNASequenceCollection)
@@ -235,6 +237,7 @@ def predict_celltype_exp(
     return [cell_type, alt_exp/ref_exp], get_celltype, cell_mut
 
 
+
 class Mutations(GenomicRegionCollection):
     """Class to handle mutations
     """
@@ -359,13 +362,10 @@ class MutationsInCellType(object):
         # Create tensors for prediction
         original = torch.Tensor(original_matrix).unsqueeze(0).to(inf_model.device)
         altered = torch.Tensor(altered_matrix).unsqueeze(0).to(inf_model.device)
-        seq = torch.randn(1, N, 283, 4).to(inf_model.device)  # Dummy seq data
-        tss_mask = torch.ones(1, N).to(inf_model.device)  # Dummy TSS mask
-        ctcf_pos = torch.ones(1, N).to(inf_model.device)  # Dummy CTCF positions
 
         # Predict expression
-        _, original_exp = inf_model.predict(original, seq, tss_mask, ctcf_pos)
-        _, altered_exp = inf_model.predict(altered, seq, tss_mask, ctcf_pos)
+        original_exp = inf_model.predict(original)
+        altered_exp = inf_model.predict(altered)
 
         # Calculate and return the expression predictions
         original_pred = 10 ** (original_exp[0, center, strand_idx].item()) - 1
@@ -374,36 +374,43 @@ class MutationsInCellType(object):
         return original_pred, altered_pred
 
 
-class CellMutCollection(object):
-    """Collection of MutationsInCellTypes objects"""
-
+class CellMutCollection:
     def __init__(
             self,
             model_ckpt_path,
             get_config_path,
             genome_path,
             motif_path,
-            celltype_annot_path,
             celltype_list,
             variant_list,
             variant_to_genes,
             output_dir,
             num_workers,
             debug=False,
+            celltype_annot_path=None,
+            cell_obj_dict=None
         ):
         self.output_dir = output_dir
-        celltype_annot = pd.read_csv(celltype_annot_path)
-        self.celltype_annot_dict = celltype_annot.set_index('id').celltype.to_dict()
+        if celltype_annot_path is not None:
+            celltype_annot = pd.read_csv(celltype_annot_path)
+            self.celltype_annot_dict = celltype_annot.set_index('id').celltype.to_dict()
+        else:
+            self.celltype_annot_dict = {cell_id: cell_id for cell_id in celltype_list}
 
-        self.ckpt_path = model_ckpt_path
+        if model_ckpt_path is not None:
+            self.ckpt_path = model_ckpt_path
+            self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
+        else:
+            self.ckpt_path = model_ckpt_path
+            self.inf_model = None
+
         self.num_workers = num_workers
         self.get_config_path = get_config_path
 
-        self.inf_model = InferenceModel(self.ckpt_path, 'cuda')
         self.genome = Genome('hg38', genome_path)
         self.motif = NrMotifV1.load_from_pickle(motif_path)
         self.debug = debug
-        
+
         self.get_config = load_config(get_config_path)
         self.get_config.celltype.jacob=True
         self.get_config.celltype.num_cls=2
@@ -426,6 +433,9 @@ class CellMutCollection(object):
         
         self.celltype_list = celltype_list
         self.celltype_cache = {}
+        if cell_obj_dict is not None:
+            for cell_id, cell_obj in cell_obj_dict.items():
+                self.celltype_cache[cell_id] = cell_obj
         self.jacobian_cache = {}
         self.variant_muts, self.variant_list, self.failed_rsids = read_rsid_parallel(self.genome, variant_list, num_workers=self.num_workers)
         self.variant_to_genes = self.filter_variant_to_genes_map(variant_to_genes)
@@ -562,9 +572,16 @@ class CellMutCollection(object):
             for item in flat_failed_args:
                 f.write(str(item))
                 f.write("\n")
+        # read all scores and concat
+        for variant in self.variant_list:
+            try:
+                scores.append(pd.read_feather(f"{self.output_dir}/feather/{variant}.feather"))
+            except:
+                pass
+        scores = pd.concat(scores, axis=0)
         return scores
     
-    def get_nearby_variants(self, variant, distance=20000):
+    def get_nearby_variants(self, variant, distance=2000):
         chrom = self.variant_muts.df.query(f'RSID=="{variant}"')["Chromosome"].values[0]
         start = self.variant_muts.df.query(f'RSID=="{variant}"')["Start"].values[0] - distance
         end = self.variant_muts.df.query(f'RSID=="{variant}"')["End"].values[0] + distance
@@ -628,6 +645,77 @@ class CellMutCollection(object):
         end = pos+distance
         genes = cell.gene_annot.query('Chromosome==@chrom & Start>@start & Start<@end')
         return np.unique(genes.gene_name.values).tolist()
+
+
+
+
+class GETHydraCellMutCollection(CellMutCollection):
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg
+        self.output_dir = os.path.join(cfg.machine.output_dir, cfg.wandb.project_name, cfg.wandb.run_name, 'variant_analysis')
+        self.model_ckpt_path = os.path.join(cfg.machine.output_dir, cfg.wandb.project_name, cfg.wandb.run_name, 'checkpoints/best.ckpt')
+        self.get_config_path = pkg_resources.resource_filename("atac_rna_data_processing", "config/GET.yaml")
+        self.genome_path = cfg.machine.fasta_path
+        self.motif_path = pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
+        self.num_workers = cfg.machine.num_workers
+        self.debug = False
+        hydra_celltype = GETHydraCellType.from_config(cfg)
+        self.celltype_cache = {hydra_celltype.celltype: hydra_celltype}
+        self.celltype_list = [hydra_celltype.celltype]
+        self.setup_directories()
+        # self.setup_model()
+        self.setup_genome_and_motif()
+        self.setup_variants()
+        
+
+        self.jacobian_cache = {}
+
+    def setup_directories(self):
+        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(f"{self.output_dir}/csv", exist_ok=True)
+        os.makedirs(f"{self.output_dir}/feather", exist_ok=True)
+        os.makedirs(f"{self.output_dir}/logs", exist_ok=True)
+
+    def setup_model(self):
+        if self.model_ckpt_path is not None:
+            self.inf_model = InferenceModel(self.model_ckpt_path, 'cuda')
+        else:
+            self.inf_model = None
+
+    def setup_genome_and_motif(self):
+        self.genome = Genome('hg38', self.genome_path)
+        self.motif = NrMotifV1.load_from_pickle(self.motif_path)
+
+    def setup_variants(self):
+        genes_list = self.cfg.task.gene_list.split(',')
+        self.variant_list = self.cfg.task.mutations.split(',')
+        self.variant_to_genes = {rsid: genes_list for rsid in self.variant_list}
+        
+        self.variant_muts, self.variant_list, self.failed_rsids = read_rsid_parallel(
+            self.genome, self.variant_list, num_workers=self.num_workers
+        )
+        self.variant_to_genes = self.filter_variant_to_genes_map(self.variant_to_genes)
+        
+        self.setup_normal_variants()
+        self.generate_motif_diff_df(save_motif_df=True)
+
+    def setup_normal_variants(self):
+        self.variant_to_normal_variants = {}
+        all_variant_mut_df_col = [self.variant_muts.df]
+        all_failed_variant_list = []
+        
+        for rsid in self.variant_list:
+            normal_variants_muts, processed_normal_variants, failed_normal_variants = self.get_nearby_variants(rsid)
+            all_variant_mut_df_col.append(normal_variants_muts.df)
+            self.variant_to_normal_variants[rsid] = processed_normal_variants
+            all_failed_variant_list += failed_normal_variants
+        
+        self.all_variant_mut_df = pd.concat(all_variant_mut_df_col, ignore_index=True).drop_duplicates()
+        self.all_failed_variant_list = list(set(all_failed_variant_list))
+        
+        with open(f"{self.output_dir}/logs/failed_rsid_not_in_ref.txt", "w") as f:
+            for item in self.all_failed_variant_list:
+                f.write(f"{item}\n")
 
 
 class SVs(object):
