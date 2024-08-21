@@ -1,20 +1,6 @@
 # Repository for data processing workflows of ATAC/RNA data
 This is the repository of data processing workflows for train the regulatory models using ATAC/RNA-seq data.
 
-The following workflows are included:
-
-```{text}
-├── human
-│   ├── 10x (hg38)
-│   ├── 4DN (hg38)
-│   ├── aGBM (?)
-│   ├── bingren_data (hg38)
-│   ├── fetal_human (hg19)
-│   ├── k562 (hg38)
-│   ├── pGBM (?)
-│   └── TCGA (hg19)
-├── mouse
-```
 
 ## Installation
 
