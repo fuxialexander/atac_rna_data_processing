@@ -1,14 +1,13 @@
 import numpy as np
 import pandas as pd
+import zarr
+from atac_rna_data_processing.io.motif import print_results
+from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
 from Bio import SeqIO
 from Bio.Seq import Seq
 from pyliftover import LiftOver
-from tqdm import tqdm
 from scipy.sparse import csr_matrix, save_npz, vstack
-import zarr
-from atac_rna_data_processing.io.motif import (pfm_conversion, prepare_scanner,
-                                               print_results)
-from atac_rna_data_processing.io.nr_motif_v1 import NrMotifV1
+from tqdm import tqdm
 
 
 # lo = LiftOver('hg19', 'hg38')
