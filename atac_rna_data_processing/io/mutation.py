@@ -499,6 +499,7 @@ class CellMutCollection:
         
         if save_motif_df:
             motif_diff_df.to_csv(os.path.join(self.output_dir, 'motif_diff_df.csv'))
+        self.motif_diff_df = motif_diff_df
         return motif_diff_df
             
     def get_variant_score(self, args_tuple):
@@ -652,8 +653,8 @@ class CellMutCollection:
 class GETHydraCellMutCollection(CellMutCollection):
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
-        self.output_dir = os.path.join(cfg.machine.output_dir, cfg.wandb.project_name, cfg.wandb.run_name, 'variant_analysis')
-        self.model_ckpt_path = os.path.join(cfg.machine.output_dir, cfg.wandb.project_name, cfg.wandb.run_name, 'checkpoints/best.ckpt')
+        self.output_dir = os.path.join(cfg.machine.output_dir, cfg.run.project_name, cfg.run.run_name, 'variant_analysis')
+        self.model_ckpt_path = os.path.join(cfg.machine.output_dir, cfg.run.project_name, cfg.run.run_name, 'checkpoints/best.ckpt')
         self.get_config_path = pkg_resources.resource_filename("atac_rna_data_processing", "config/GET.yaml")
         self.genome_path = cfg.machine.fasta_path
         self.motif_path = pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
@@ -662,6 +663,7 @@ class GETHydraCellMutCollection(CellMutCollection):
         hydra_celltype = GETHydraCellType.from_config(cfg)
         self.celltype_cache = {hydra_celltype.celltype: hydra_celltype}
         self.celltype_list = [hydra_celltype.celltype]
+        self.celltype_annot_dict = {hydra_celltype.celltype: hydra_celltype.celltype}
         self.setup_directories()
         # self.setup_model()
         self.setup_genome_and_motif()

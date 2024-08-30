@@ -901,7 +901,7 @@ class GETHydraCellType(Celltype):
 
             gene_annot = {
                 'gene_name': self.genelist[i].strip(' '),
-                'Chromosome': self._zarr_data['chromosome'][:].reshape(-1)[i],
+                'Chromosome': self._zarr_data['chromosome'][:].reshape(-1)[i].strip(' '),
                 'Start': self._zarr_data['peak_coord'][i, focus_represent_idx, 0].astype(int),
                 'End': self._zarr_data['peak_coord'][i, focus_represent_idx, 0].astype(int),
                 'Strand': strand,
@@ -951,7 +951,7 @@ class GETHydraCellType(Celltype):
     def from_config(cls, cfg):
         return cls(
             celltype=f"{cfg.dataset.leave_out_celltypes}",
-            zarr_path=f"{cfg.machine.output_dir}/{cfg.wandb.project_name}/{cfg.wandb.run_name}.zarr",
+            zarr_path=f"{cfg.machine.output_dir}/{cfg.run.project_name}/{cfg.run.run_name}.zarr",
             motif_path=pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
         )
 
