@@ -6,3 +6,4 @@ celltype:
   input: True
   jacob: True
   embed: True
+  assets_dir: '.'
