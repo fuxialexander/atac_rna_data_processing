@@ -25,5 +25,5 @@ class Config:
 def load_config(conf):
     with open(f"{conf}.yaml", "r") as f:
         config_data = yaml.safe_load(f)
-        config = Config(config_data)
+        config = Config(**config_data)
     return config
