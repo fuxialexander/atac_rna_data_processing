@@ -1000,7 +1000,7 @@ class OneTSSJacobian:
         self.data = func(self.data)
         return self.data
 
-    def motif_summary(self, stats="mean"):
+    def motif_summary(self, stats="absmean"):
         """Summarize the motif scores."""
         # assert stats in ['mean', 'max']
         motif_data = self.data[self.features]
@@ -1016,7 +1016,7 @@ class OneTSSJacobian:
         elif callable(stats):
             return motif_data.apply(stats, axis=0)
 
-    def region_summary(self, stats="mean"):
+    def region_summary(self, stats="absmean"):
         """Summarize the motif scores."""
         data = self.data[self.features]
         if stats == "mean":
@@ -1032,7 +1032,7 @@ class OneTSSJacobian:
         data["Score"] = region_data
         return data
 
-    def summarize(self, axis="motif", stats="mean"):
+    def summarize(self, axis="motif", stats="absmean"):
         """Summarize the data."""
         if axis == "motif":
             return self.motif_summary(stats)
