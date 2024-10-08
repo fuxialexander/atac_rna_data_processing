@@ -319,7 +319,7 @@ class Celltype:
             jacob, tss, region, self.features, self.num_cls)
         return tss_jacob
 
-    def gene_jacobian_summary(self, gene, axis="motif", multiply_input=True):
+    def gene_jacobian_summary(self, gene, axis="motif", multiply_input=True, stats="absmean"):
         """
         Summarizes the Jacobian for a given gene.
 
@@ -338,13 +338,13 @@ class Celltype:
         """
         gene_jacobs = self.get_gene_jacobian(gene, multiply_input)
         if axis == "motif":
-            return pd.concat([jac.summarize(axis) for jac in gene_jacobs], axis=1).sum(
+            return pd.concat([jac.summarize(axis, stats=stats) for jac in gene_jacobs], axis=1).sum(
                 axis=1
             )
         elif axis == "region":
             # concat in axis 0 and aggregate overlapping regions by sum the score and divided by number of tss
             return (
-                pd.concat([j.summarize(axis="region") for j in gene_jacobs])
+                pd.concat([j.summarize(axis, stats=stats) for j in gene_jacobs])
                 .groupby(["index", "Chromosome", "Start", "End"])
                 .Score.sum()
                 .reset_index()
@@ -831,7 +831,6 @@ class Celltype:
 
         return fig
 
-
 class GETCellType(Celltype):
     def __init__(self, celltype, config):
         features = config.celltype.features
@@ -946,11 +945,17 @@ class GETHydraCellType(Celltype):
 
     # class method create from config
     @classmethod
-    def from_config(cls, cfg):
+    def from_config(cls, cfg, celltype=None, zarr_path=None, motif_path=None):
+        if celltype is None:
+            celltype = f"{cfg.dataset.leave_out_celltypes}"
+        if zarr_path is None:
+            zarr_path = f"{cfg.machine.output_dir}/{cfg.run.project_name}/{cfg.run.run_name}/{cfg.run.run_name}.zarr"
+        if motif_path is None:
+            motif_path = pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
         return cls(
-            celltype=f"{cfg.dataset.leave_out_celltypes}",
-            zarr_path=f"{cfg.machine.output_dir}/{cfg.run.project_name}/{cfg.run.run_name}.zarr",
-            motif_path=pkg_resources.resource_filename("atac_rna_data_processing", "data/NrMotifV1.pkl")
+            celltype=celltype,
+            zarr_path=zarr_path,
+            motif_path=motif_path
         )
 
 class OneTSSJacobian:
